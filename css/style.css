@@ -1,0 +1,193 @@
+/* css/style.css */
+
+/* Add your custom CSS rules here */
+/* For example: */
+/* body {
+    background-color: #f8f9fa;
+} */
+
+.bg-gradient-light-gray {
+    /* Set a solid base color */
+    background-color: #6c757d; 
+
+    /* Apply a gradient that starts at 70% from the top */
+    background-image: linear-gradient(to bottom, #6c757d 70%, #858796 100%);
+    
+    color: #ffffff; /* Keep the text white */
+}
+
+
+    :root {
+        --side-nav-width: 250px;
+        --side-nav-collapsed-width: 60px; /* If you ever want a collapsed icon-only version */
+        --side-nav-bg: #343a40;
+        --side-nav-color: #adb5bd;
+        --side-nav-hover-bg: #495057;
+        --side-nav-hover-color: #ffffff;
+        --side-nav-active-bg: #0d6efd;
+        --side-nav-active-color: #ffffff;
+    }
+
+    html[data-bs-theme="light"] {
+        --side-nav-bg: #f8f9fa;
+        --side-nav-color: #495057;
+        --side-nav-hover-bg: #e9ecef;
+        --side-nav-hover-color: #000000;
+    }
+
+    /* Base styles for the side navigation - will be fixed on desktop, offcanvas on mobile */
+    .side-nav {
+        background-color: var(--side-nav-bg);
+        width: var(--side-nav-width);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        transition: width 0.3s ease; /* For potential future collapse */
+        border-right: 1px solid var(--bs-border-color);
+        /* Ensure it's fixed on desktop and positioned correctly */
+        position: fixed; /* Keep this to fix it to the left edge */
+        top: 0;
+        left: 0;
+        z-index: 1030; /* Should be lower than mobile backdrop (1040) but higher than normal content */
+    }
+
+    /* Adjust page content wrapper for desktop fixed sidebar */
+    .page-content-wrapper {
+        transition: margin-left 0.3s ease; /* Smooth transition if sidebar changes width */
+    }
+
+    @media (min-width: 992px) {
+        /* On desktop, push the content wrapper to the right */
+        .page-content-wrapper {
+            margin-left: var(--side-nav-width); /* This pushes the content over */
+        }
+        /* Ensure the offcanvas is visible and not transformed on desktop */
+        .side-nav.offcanvas-lg {
+            transform: none !important; /* Overrides offcanvas hide transform */
+            visibility: visible !important; /* Overrides offcanvas hide visibility */
+            /* IMPORTANT: Bootstrap's offcanvas sets z-index: 1045 when open on mobile.
+               On desktop, we want it fixed but not interfering with mobile z-index.
+               The default z-index: 1030 in .side-nav is fine here, as there's no backdrop on desktop.
+            */
+        }
+        /* No body padding-left needed if content-wrapper handles it */
+        body {
+            padding-left: 0; /* Reset if previously set for mobile */
+        }
+    }
+
+    /* On mobile, account for the fixed top bar and let offcanvas handle the sidebar position */
+    @media (max-width: 991.98px) {
+        .page-content-wrapper {
+            /* This padding ensures content starts below the mobile topbar */
+            padding-top: 56px; /* Adjust if your mobile top bar height in topbar_mobile.html is different */
+        }
+        /* For offcanvas behavior on mobile, let Bootstrap handle position and z-index for the sidebar */
+        .side-nav {
+            position: fixed; /* Ensure it stays fixed at top/left */
+            top: 0;
+            left: 0;
+            /* Bootstrap's offcanvas.js will add 'show' class and manage its z-index (to 1045)
+               and transform when opened. The backdrop will be z-index 1040.
+               Your fixed z-index: 1030 on .side-nav will be overridden by Bootstrap when it opens.
+            */
+        }
+        /* Add padding to body to prevent content being hidden by fixed topbar when *not* using content-wrapper padding */
+        body {
+            padding-top: 56px; /* Match page-content-wrapper padding-top */
+        }
+    }
+
+
+    /* --- Existing sidebar styles (keep these) --- */
+    .side-nav-header {
+        padding: 0.75rem 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .side-nav-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--bs-body-color);
+        text-decoration: none;
+    }
+
+    .side-nav-menu {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        flex-grow: 1;
+        overflow-y: auto;
+    }
+
+    .side-nav-menu-item a {
+        display: flex;
+        align-items: center;
+        padding: 0.9rem 1.25rem;
+        color: var(--side-nav-color);
+        text-decoration: none;
+        transition: background-color 0.2s, color 0.2s;
+    }
+
+    .side-nav-menu-item a:hover {
+        background-color: var(--side-nav-hover-bg);
+        color: var(--side-nav-hover-color);
+    }
+
+    .side-nav-menu-item.active > a {
+        background-color: var(--side-nav-active-bg);
+        color: var(--side-nav-active-color);
+        font-weight: 500;
+    }
+
+    .side-nav-menu-item a .modus-icons {
+        font-size: 1.25rem;
+        margin-right: 1rem;
+        width: 24px; /* Ensure alignment */
+        text-align: center;
+    }
+
+    /* Arrow for collapsible menus */
+    .side-nav-menu-item a.has-arrow::after {
+        content: '\e90a'; /* Modus icon for 'chevron_down' */
+        font-family: 'modus-icons';
+        margin-left: auto;
+        transition: transform 0.3s ease;
+    }
+
+    .side-nav-menu-item a.has-arrow[aria-expanded="true"]::after {
+        transform: rotate(-180deg);
+    }
+
+    .side-nav-sub-menu {
+        list-style: none;
+        padding-left: 2rem; /* Indent sub-menu items */
+        background-color: rgba(0,0,0,0.1);
+    }
+    html[data-bs-theme="light"] .side-nav-sub-menu {
+        background-color: rgba(0,0,0,0.03);
+    }
+    .side-nav-sub-menu .side-nav-menu-item a {
+        padding-left: 2.5rem;
+    }
+
+    .side-nav-footer {
+        padding: 0.75rem;
+        border-top: 1px solid var(--bs-border-color);
+        display: flex;
+        justify-content: space-around;
+    }
+    .side-nav-footer .menu-item {
+        color: var(--side-nav-color);
+        font-size: 1.5rem;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        transition: all 0.2s ease-in-out;
+    }
+    .side-nav-footer .menu-item:hover {
+        background-color: var(--side-nav-hover-bg);
+        color: var(--side-nav-hover-color);
+    }

@@ -1,0 +1,11 @@
+2025-07-01 22:40:22 - Script started and shutdown function registered.
+2025-07-01 22:40:22 - Session started.
+2025-07-01 22:40:22 - Composer autoload.php included.
+2025-07-01 22:40:22 - Database config included.
+2025-07-01 22:40:22 - Wasabi config included.
+2025-07-01 22:40:22 - Using endpoint: https://s3.us-central-1.wasabisys.com
+2025-07-01 22:40:22 - Attempting to create S3Client...
+2025-07-01 22:40:22 - S3Client created successfully.
+2025-07-01 22:40:22 - S3 PutObject command created.
+2025-07-01 22:40:22 - Pre-signed URL generated successfully.
+2025-07-01 22:40:22 - Script finished. Sending final JSON response.

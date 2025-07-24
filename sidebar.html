@@ -1,0 +1,137 @@
+<!--
+  UPDATED sidebar.html
+  - Removed the non-standard 'has-arrow' class from the Reports link.
+  - Added a <style> block to create a reliable, CSS-only dropdown arrow
+    that will work on all browsers and on any collapsible menu item.
+-->
+<style>
+  /*
+   * This CSS adds a dropdown arrow to sidebar menu items that have a submenu.
+   * It targets links with the `data-bs-toggle="collapse"` attribute inside the side-nav
+   * and creates a theme-aware, CSS-only arrow.
+  */
+  .side-nav-menu .side-nav-menu-item > a[data-bs-toggle="collapse"] {
+    position: relative;
+  }
+
+  .side-nav-menu .side-nav-menu-item > a[data-bs-toggle="collapse"]::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 0.3em solid transparent;
+    border-right: 0.3em solid transparent;
+    border-top: 0.3em solid;
+    color: currentColor; /* Inherit color from the link text */
+    position: absolute;
+    right: 1.5rem; /* Adjusted for better alignment */
+    top: 50%;
+    transform: translateY(-50%);
+    transition: transform 0.2s ease-in-out;
+  }
+
+  /* Rotate the arrow when the menu is expanded (using the aria-expanded attribute) */
+  .side-nav-menu .side-nav-menu-item > a[data-bs-toggle="collapse"][aria-expanded="true"]::after {
+    transform: translateY(-50%) rotate(180deg);
+  }
+</style>
+
+<nav class="side-nav offcanvas-lg offcanvas-start" tabindex="-1" id="sideNav" data-bs-backdrop="false">
+    <div class="side-nav-header">
+        <a class="side-nav-title" href="dashboard.php">PourDay App</a>
+        <button type="button" class="btn-close d-lg-none" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+
+    <ul class="side-nav-menu" id="sideNavMenu">
+        <li class="side-nav-menu-item">
+            <a href="dashboard.php">
+                <i class="modus-icons notranslate">dashboard</i>
+                <span>Dashboard</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="company_admin_panel.php">
+                <i class="modus-icons notranslate">manage_accounts</i>
+                <span>User Management</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="customers.php">
+                <i class="modus-icons notranslate">building_corporate</i>
+                <span>Customers</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="projects.php">
+                <i class="modus-icons notranslate">folder_open</i>
+                <span>Projects</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="tasks.php">
+                <i class="modus-icons notranslate">clipboard_actions</i>
+                <span>Tasks</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="image_tracker.php">
+                <i class="modus-icons notranslate">camera</i>
+                <span>Image Tracker</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <!-- The 'has-arrow' class has been removed as it's not needed -->
+            <a href="#reportsSubMenu" data-bs-toggle="collapse" aria-expanded="false">
+                <i class="modus-icons notranslate">file_text</i>
+                <span>Reports</span>
+            </a>
+            <ul id="reportsSubMenu" class="side-nav-sub-menu collapse">
+                <li class="side-nav-menu-item"><a href="freport_upload.php">Upload FF/FL</a></li>
+                <li class="side-nav-menu-item"><a href="freport_viewer.php">View/Download FF/FL</a></li>
+                <li class="side-nav-menu-item"><a href="weather_upload.php">Upload Weather Data</a></li>
+                <li class="side-nav-menu-item"><a href="report_images.php">Image Tracker</a></li>
+                <li class="side-nav-menu-item"><a href="photo_selector.php">Photo Selection</a></li>
+            </ul>
+        </li>
+    </ul>
+
+    <div class="side-nav-footer">
+        <a href="#" class="menu-item" id="theme-toggle" title="Toggle Theme">
+            <i class="modus-icons notranslate theme-icon-light">sun</i>
+            <i class="modus-icons notranslate theme-icon-dark">moon</i>
+        </a>
+        <a href="logout.php" class="menu-item" title="Logout">
+            <i class="modus-icons notranslate">sign_out</i>
+        </a>
+    </div>
+</nav>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // --- Active Link Highlighter ---
+    const currentPath = window.location.pathname.split("/").pop();
+    const navLinks = document.querySelectorAll('#sideNavMenu a');
+
+    navLinks.forEach(link => {
+        const linkPath = link.getAttribute('href').split("/").pop();
+        if (linkPath === currentPath) {
+            // Add 'active' to the parent li
+            const parentLi = link.closest('.side-nav-menu-item');
+            if(parentLi) parentLi.classList.add('active');
+
+            // If it's in a submenu, expand the parent
+            const parentSubMenu = link.closest('.side-nav-sub-menu');
+            if (parentSubMenu) {
+                parentSubMenu.classList.add('show');
+                // Use the aria-controls to find the trigger, which is more robust
+                const triggerLink = document.querySelector(`a[href="#${parentSubMenu.id}"]`);
+                if(triggerLink) {
+                    triggerLink.setAttribute('aria-expanded', 'true');
+                    // Also set the parent list item of the trigger to active
+                    triggerLink.closest('.side-nav-menu-item').classList.add('active');
+                }
+            }
+        }
+    });
+});
+</script>

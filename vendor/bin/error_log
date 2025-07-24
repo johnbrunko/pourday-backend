@@ -1,0 +1,40 @@
+[01-Jul-2025 22:18:16 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function Composer\Util\symlink() in phar:///usr/local/bin/composer1.phar/src/Composer/Util/Filesystem.php:578
+Stack trace:
+#0 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/BinaryInstaller.php(160): Composer\Util\Filesystem->relativeSymlink()
+#1 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/BinaryInstaller.php(88): Composer\Installer\BinaryInstaller->installSymlinkBinaries()
+#2 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/LibraryInstaller.php(102): Composer\Installer\BinaryInstaller->installBinaries()
+#3 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/InstallationManager.php(173): Composer\Installer\LibraryInstaller->install()
+#4 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/InstallationManager.php(160): Composer\Installer\InstallationManager->install()
+#5 phar:///usr/local/bin/composer1.phar/src/Composer/Installer.php(611): Composer\Installer\InstallationManager->execute()
+#6 phar:///usr/local/bin/composer1.phar/src/Composer/Installer.php(232): Composer\Installer->doInstall()
+#7 phar:///usr/local/bin/composer1.phar/src/Composer/Command/UpdateCommand.php(163): Composer\Installer->run()
+#8 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Command/Command.php(245): Composer\Command\UpdateCommand->execute()
+#9 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Application.php(835): Symfony\Component\Console\Command\Command->run()
+#10 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Application.php(185): Symfony\Component\Console\Application->doRunCommand()
+#11 phar:///usr/local/bin/composer1.phar/src/Composer/Console/Application.php(283): Symfony\Component\Console\Application->doRun()
+#12 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Application.php(117): Composer\Console\Application->doRun()
+#13 phar:///usr/local/bin/composer1.phar/src/Composer/Console/Application.php(113): Symfony\Component\Console\Application->run()
+#14 phar:///usr/local/bin/composer1.phar/bin/composer(64): Composer\Console\Application->run()
+#15 /usr/local/bin/composer1.phar(24): require('phar:///usr/loc...')
+#16 {main}
+  thrown in phar:///usr/local/bin/composer1.phar/src/Composer/Util/Filesystem.php on line 578
+[01-Jul-2025 22:20:27 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function Composer\Util\symlink() in phar:///usr/local/bin/composer1.phar/src/Composer/Util/Filesystem.php:578
+Stack trace:
+#0 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/BinaryInstaller.php(160): Composer\Util\Filesystem->relativeSymlink()
+#1 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/BinaryInstaller.php(88): Composer\Installer\BinaryInstaller->installSymlinkBinaries()
+#2 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/LibraryInstaller.php(102): Composer\Installer\BinaryInstaller->installBinaries()
+#3 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/InstallationManager.php(173): Composer\Installer\LibraryInstaller->install()
+#4 phar:///usr/local/bin/composer1.phar/src/Composer/Installer/InstallationManager.php(160): Composer\Installer\InstallationManager->install()
+#5 phar:///usr/local/bin/composer1.phar/src/Composer/Installer.php(611): Composer\Installer\InstallationManager->execute()
+#6 phar:///usr/local/bin/composer1.phar/src/Composer/Installer.php(232): Composer\Installer->doInstall()
+#7 phar:///usr/local/bin/composer1.phar/src/Composer/Command/UpdateCommand.php(163): Composer\Installer->run()
+#8 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Command/Command.php(245): Composer\Command\UpdateCommand->execute()
+#9 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Application.php(835): Symfony\Component\Console\Command\Command->run()
+#10 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Application.php(185): Symfony\Component\Console\Application->doRunCommand()
+#11 phar:///usr/local/bin/composer1.phar/src/Composer/Console/Application.php(283): Symfony\Component\Console\Application->doRun()
+#12 phar:///usr/local/bin/composer1.phar/vendor/symfony/console/Application.php(117): Composer\Console\Application->doRun()
+#13 phar:///usr/local/bin/composer1.phar/src/Composer/Console/Application.php(113): Symfony\Component\Console\Application->run()
+#14 phar:///usr/local/bin/composer1.phar/bin/composer(64): Composer\Console\Application->run()
+#15 /usr/local/bin/composer1.phar(24): require('phar:///usr/loc...')
+#16 {main}
+  thrown in phar:///usr/local/bin/composer1.phar/src/Composer/Util/Filesystem.php on line 578
