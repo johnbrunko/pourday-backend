@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => 'pourday/app',
-        'pretty_version' => '1.0.0+no-version-set',
-        'version' => '1.0.0.0',
-        'reference' => NULL,
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => 'f0a654ffe69cb4144ba90f649df2d41dca86613f',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -110,9 +110,9 @@
             'dev_requirement' => false,
         ),
         'pourday/app' => array(
-            'pretty_version' => '1.0.0+no-version-set',
-            'version' => '1.0.0.0',
-            'reference' => NULL,
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => 'f0a654ffe69cb4144ba90f649df2d41dca86613f',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

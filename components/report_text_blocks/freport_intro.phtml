@@ -1,0 +1,77 @@
+<?php
+//components/report_text_blocks/freport_intro.phtml
+
+// Determine if the pour "met" or "did not meet" specifications
+$pour_status = 'met';
+if (!empty($compositeFNumbers)) {
+    foreach ($compositeFNumbers as $row) {
+        if (strcasecmp(trim($row['sov_pass_fail'] ?? ''), 'FAIL') === 0 || strcasecmp(trim($row['mlv_pass_fail'] ?? ''), 'FAIL') === 0) {
+            $pour_status = 'did not meet';
+            break; // No need to check further if any FAIL is found
+        }
+    }
+}
+
+// MODIFIED: Format the pour date for display. Prioritize the task's scheduled date.
+$pourDateFormatted = 'a recent date'; // A sensible fallback
+$dateToUse = $scheduled ?? $upload_timestamp ?? null;
+
+if (!empty($dateToUse) && ($timestamp = strtotime($dateToUse))) {
+    $pourDateFormatted = date('F j, Y', $timestamp);
+}
+?>
+
+<div class="pdf-section intro-text">
+    <h3 class="report-main-title">FF/FL ANALYSIS (ASTM E1155) REPORT</h3>
+
+    <?php
+    // --- New "Attn / Regarding" Block ---
+
+    // Line 1: Attn
+    $attnParts = [];
+    if (!empty($contact_title)) {
+        $attnParts[] = htmlspecialchars($contact_title);
+    }
+    $fullContactName = trim(htmlspecialchars($contact_first_name ?? '') . ' ' . htmlspecialchars($contact_last_name ?? ''));
+    if (!empty($fullContactName)) {
+        $attnParts[] = $fullContactName;
+    }
+    $attnLine = 'Attn: ' . implode(', ', $attnParts);
+
+    // Line 5: City, State, Zip
+    $cityStateZip = [];
+    if (!empty($city)) $cityStateZip[] = htmlspecialchars($city);
+    if (!empty($state)) $cityStateZip[] = htmlspecialchars($state);
+    if (!empty($zip)) $cityStateZip[] = htmlspecialchars($zip);
+    $addressLine = implode(', ', $cityStateZip);
+
+    echo '<p style="line-height: 1.6; margin-bottom: 20px;"><strong>' . $attnLine . '</strong><br>';
+    echo '<strong>' . htmlspecialchars($customer_name ?? '') . '</strong><br>';
+    echo '<strong>Regarding:</strong><br>';
+    echo '<strong>' . htmlspecialchars($job_name ?? '') . '</strong><br>';
+    echo '<strong>' . $addressLine . '</strong></p>';
+    ?>
+
+    <p>As requested, FST was present to observe and provide VS309 Oversite services during the placement of <?php echo htmlspecialchars($report_name); ?> on <?php echo $pourDateFormatted; ?>. The specified F<sub>F</sub> and F<sub>L</sub> values for this pour were <?php echo htmlspecialchars($spec_overall_ff ?? ''); ?> and <?php echo htmlspecialchars($spec_overall_fl ?? ''); ?>. The pour <?php echo $pour_status; ?> these values. Individual readings were also then compared against minimum local values to "establish the minimum surface quality that would be acceptable anywhere on any of the concrete placements".</p>
+
+    <h3>Scope</h3>
+    <p>The testing performed by FST adheres to ASTM 1155 for individual test sections to provide a record of placement performance for an individual pour. ACI 117 states that " the specified overall values...are the F<sub>F</sub> and F<sub>L</sub> to which the completed project floor surface must conform viewed in its entirety". A combined overall F<sub>F</sub>/F<sub>L</sub> report may not be produced until the slab is completed.</p>
+
+    <p>Please note that F<sub>L</sub> values are typically not evaluated for elevated decks due to the inherent sag and deflection associated with these structures. In those cases, the results here are shared for informational purposes and may be consulted to provide guidance for shoring plans for subsequent pours.</p>
+
+    <h3>Testing Procedures</h3>
+    <p>All tests were performed using 3D Laser Scanning as a data collection method per ASTM E1155. All tested surfaces were then analyzed before test completion to ensure that penetrations, walls, joints, forms and columns were provided two feet of clearance. A map of the samples taken and individual readings is included in this report for reference.</p>
+
+    <h3>F<sub>F</sub>/F<sub>L</sub> and Flooring Tolerances</h3>
+    <p>The nature of F<sub>F</sub>/F<sub>L</sub> testing and its results does not immediately translate to manufacturer flooring tolerances. F<sub>F</sub> numbers are greatly affected by the number of variances present in a sample run, meaning that an 1/8" in 10 ft can still produce a low result if that variance occurs repeatedly. VS309 Oversite allows for smoother corrections, typically resulting in a finished floor that exceeds manufacturer specifications.</p>
+    <p>The following comparisons are then provided for reference only:</p>
+    <ul>
+        <li>F<sub>F</sub> 25-35 is typically equal to approximately 1/4" in 10'</li>
+        <li>F<sub>F</sub> 50-60 is typically equal to approximately 1/8" in 10'</li>
+        <li>F<sub>F</sub> 100 is typically equal to approximately 1/16" in 10'</li>
+    </ul>
+
+    <p>This report was prepared by <?= htmlspecialchars($preparer_first_name) ?> <?= htmlspecialchars($preparer_last_name) ?></p>
+    
+    <p style="margin-top: 20px;"><strong>Measurement Units:</strong> U.S. Survey Feet</p>
+</div>

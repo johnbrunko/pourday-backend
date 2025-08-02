@@ -1,5 +1,5 @@
 <?php
-// File: api/photo_selector_handler.php
+// File: api/photo_selector_handler.php - REFINED for NULL handling and clarity
 
 session_start();
 header('Content-Type: application/json');
@@ -25,10 +25,10 @@ $user_id = $_SESSION['id'];
 
 // --- S3 Client Initialization ---
 $s3Client = new S3Client([
-    'version'     => 'latest',
-    'region'      => $wasabiConfig['region'],
-    'endpoint'    => $wasabiConfig['endpoint'],
-    'credentials' => [ 'key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret'] ]
+    'version'       => 'latest',
+    'region'        => $wasabiConfig['region'],
+    'endpoint'      => $wasabiConfig['endpoint'],
+    'credentials'   => [ 'key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret'] ]
 ]);
 
 // --- Action Routing ---
@@ -43,46 +43,41 @@ switch ($action) {
         }
 
         try {
-            // 1. Get all photos from the database for this task
             $dbPhotos = [];
-            $sql = "SELECT id, image_path, comments, activity_category_id FROM task_photos WHERE task_id = ?";
+            // Join files table with task_photos to get all relevant image data for the task
+            // LEFT JOIN ensures we get all images in the task's folder from 'files'
+            // even if they don't yet have an entry in 'task_photos'.
+            $sql = "SELECT f.id AS file_id, f.object_key, tp.comments, tp.activity_category_id
+                    FROM files f
+                    LEFT JOIN task_photos tp ON f.id = tp.file_id AND tp.task_id = ?
+                    WHERE f.task_id = ? AND f.project_id = ? AND f.upload_type = 'img'";
+            
             if ($stmt = mysqli_prepare($link, $sql)) {
-                mysqli_stmt_bind_param($stmt, "i", $taskId);
+                mysqli_stmt_bind_param($stmt, "iii", $taskId, $taskId, $projectId);
                 mysqli_stmt_execute($stmt);
                 $result = mysqli_stmt_get_result($stmt);
                 while ($row = mysqli_fetch_assoc($result)) {
-                    $dbPhotos[$row['image_path']] = $row; // Use path as key for easy lookup
+                    $dbPhotos[] = $row; // Store as an array of associative arrays
                 }
                 mysqli_stmt_close($stmt);
             }
 
-            // 2. List all objects from the Wasabi folder
-            $folderPath = "{$projectId}/{$taskId}/images/";
-            $s3Objects = $s3Client->listObjectsV2([
-                'Bucket' => $wasabiConfig['bucket'],
-                'Prefix' => $folderPath
-            ]);
-
             $allPhotosData = [];
-            if (isset($s3Objects['Contents'])) {
-                foreach ($s3Objects['Contents'] as $object) {
-                    $key = $object['Key'];
-                    // Skip the folder itself, only process files
-                    if (substr($key, -1) === '/') continue;
+            foreach ($dbPhotos as $photo) {
+                // Generate presigned URL
+                $cmd = $s3Client->getCommand('GetObject', ['Bucket' => $wasabiConfig['bucket'], 'Key' => $photo['object_key']]);
+                $presignedUrl = (string) $s3Client->createPresignedRequest($cmd, '+60 minutes')->getUri();
 
-                    $cmd = $s3Client->getCommand('GetObject', ['Bucket' => $wasabiConfig['bucket'], 'Key' => $key]);
-                    $presignedUrl = (string) $s3Client->createPresignedRequest($cmd, '+60 minutes')->getUri();
-
-                    $allPhotosData[] = [
-                        'image_path' => $key,
-                        'presigned_url' => $presignedUrl,
-                        'comments' => $dbPhotos[$key]['comments'] ?? null,
-                        'activity_category_id' => $dbPhotos[$key]['activity_category_id'] ?? null
-                    ];
-                }
+                $allPhotosData[] = [
+                    'file_id' => $photo['file_id'],
+                    'object_key' => $photo['object_key'],
+                    'presigned_url' => $presignedUrl,
+                    'comments' => $photo['comments'], // NULL will be handled correctly
+                    'activity_category_id' => $photo['activity_category_id'] // NULL will be handled correctly
+                ];
             }
 
-            // 3. Get all activity types
+            // Get all activity types
             $activityTypes = [];
             $sql_types = "SELECT id, name FROM activity_types WHERE is_active = 1 ORDER BY name ASC";
             $result_types = mysqli_query($link, $sql_types);
@@ -95,7 +90,7 @@ switch ($action) {
             ];
 
         } catch (S3Exception $e) {
-            $response['message'] = 'Could not list files from storage: ' . $e->getMessage();
+            $response['message'] = 'Could not generate presigned URLs from storage: ' . $e->getMessage();
         } catch (Exception $e) {
             $response['message'] = 'An unexpected error occurred: ' . $e->getMessage();
         }
@@ -103,45 +98,73 @@ switch ($action) {
 
     case 'update_photo_category':
         $taskId = filter_input(INPUT_POST, 'task_id', FILTER_VALIDATE_INT);
-        $imagePath = $_POST['image_path'] ?? null;
+        $fileId = filter_input(INPUT_POST, 'file_id', FILTER_VALIDATE_INT); // This is now the key!
         $activityId = filter_input(INPUT_POST, 'activity_category_id', FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
         $comments = trim($_POST['comments'] ?? '');
 
-        if (!$taskId || !$imagePath) {
-            $response['message'] = 'Missing required data.';
+        if (!$taskId || !$fileId) {
+            $response['message'] = 'Missing required data: Task ID or File ID.';
             break;
         }
 
-        // Check if a record for this image path already exists
-        $existingId = null;
-        $sql_check = "SELECT id FROM task_photos WHERE image_path = ?";
+        // Check if a record for this file_id and task_id already exists in task_photos
+        $existingTaskPhotoId = null;
+        $sql_check = "SELECT id FROM task_photos WHERE file_id = ? AND task_id = ?";
         if ($stmt_check = mysqli_prepare($link, $sql_check)) {
-            mysqli_stmt_bind_param($stmt_check, "s", $imagePath);
+            mysqli_stmt_bind_param($stmt_check, "ii", $fileId, $taskId);
             mysqli_stmt_execute($stmt_check);
-            mysqli_stmt_bind_result($stmt_check, $existingId);
+            mysqli_stmt_bind_result($stmt_check, $existingTaskPhotoId);
             mysqli_stmt_fetch($stmt_check);
             mysqli_stmt_close($stmt_check);
         }
 
-        if ($existingId) {
-            // UPDATE existing record
-            $sql = "UPDATE task_photos SET activity_category_id = ?, comments = ?, user_id = ? WHERE id = ?";
-            if ($stmt = mysqli_prepare($link, $sql)) {
-                mysqli_stmt_bind_param($stmt, "isii", $activityId, $comments, $user_id, $existingId);
-                mysqli_stmt_execute($stmt);
-                $response['success'] = true;
-                $response['message'] = 'Photo category updated successfully!';
-                mysqli_stmt_close($stmt);
+        if ($existingTaskPhotoId) {
+            // If activityId is NULL (meaning unassign), we should DELETE the record
+            // instead of updating it to NULL, assuming 'unassigned' means no record exists.
+            // If you want to keep records for 'unassigned' state, change this logic.
+            if ($activityId === null) {
+                $sql = "DELETE FROM task_photos WHERE id = ?";
+                if ($stmt = mysqli_prepare($link, $sql)) {
+                    mysqli_stmt_bind_param($stmt, "i", $existingTaskPhotoId);
+                    mysqli_stmt_execute($stmt);
+                    $response['success'] = true;
+                    $response['message'] = 'Photo unassigned successfully!';
+                    mysqli_stmt_close($stmt);
+                } else {
+                    $response['message'] = 'Failed to prepare delete statement: ' . mysqli_error($link);
+                }
+            } else {
+                // UPDATE existing record in task_photos
+                $sql = "UPDATE task_photos SET activity_category_id = ?, comments = ?, user_id = ? WHERE id = ?";
+                if ($stmt = mysqli_prepare($link, $sql)) {
+                    // Use a temporary variable for the activity ID to handle potential NULL correctly
+                    $activityIdForBind = $activityId;
+                    mysqli_stmt_bind_param($stmt, "isii", $activityIdForBind, $comments, $user_id, $existingTaskPhotoId);
+                    mysqli_stmt_execute($stmt);
+                    $response['success'] = true;
+                    $response['message'] = 'Photo category updated successfully!';
+                    mysqli_stmt_close($stmt);
+                } else {
+                    $response['message'] = 'Failed to prepare update statement: ' . mysqli_error($link);
+                }
             }
         } else {
-            // INSERT new record
-            $sql = "INSERT INTO task_photos (task_id, user_id, image_path, activity_category_id, comments) VALUES (?, ?, ?, ?, ?)";
-            if ($stmt = mysqli_prepare($link, $sql)) {
-                mysqli_stmt_bind_param($stmt, "iisis", $taskId, $user_id, $imagePath, $activityId, $comments);
-                mysqli_stmt_execute($stmt);
-                $response['success'] = true;
-                $response['message'] = 'Photo categorized successfully!';
-                mysqli_stmt_close($stmt);
+            // INSERT new record into task_photos
+            // Only insert if an activityId is being set (not unassigned initially)
+            if ($activityId !== null) {
+                $sql = "INSERT INTO task_photos (task_id, user_id, file_id, activity_category_id, comments) VALUES (?, ?, ?, ?, ?)";
+                if ($stmt = mysqli_prepare($link, $sql)) {
+                    mysqli_stmt_bind_param($stmt, "iiisi", $taskId, $user_id, $fileId, $activityId, $comments);
+                    mysqli_stmt_execute($stmt);
+                    $response['success'] = true;
+                    $response['message'] = 'Photo categorized successfully!';
+                    mysqli_stmt_close($stmt);
+                } else {
+                    $response['message'] = 'Failed to prepare insert statement: ' . mysqli_error($link);
+                }
+            } else {
+                $response['success'] = true; // Nothing to do if unassigning a non-existent record
+                $response['message'] = 'Photo was not previously assigned, no action needed.';
             }
         }
         break;

@@ -22,7 +22,8 @@ $request_type = $_REQUEST['request_type'] ?? null;
 
 switch ($request_type) {
     case 'get_all_customers':
-        $sql = "SELECT id, customer_name, contact_person, contact_phone, city, status FROM customers WHERE company_id = ? ORDER BY customer_name ASC";
+        // SQL query updated: Removed contact_person, contact_phone
+        $sql = "SELECT id, customer_name, city, status FROM customers WHERE company_id = ? ORDER BY customer_name ASC";
         if ($stmt = mysqli_prepare($link, $sql)) {
             mysqli_stmt_bind_param($stmt, "i", $company_id);
             if (mysqli_stmt_execute($stmt)) {
@@ -31,7 +32,15 @@ switch ($request_type) {
                     $status_badge = ($row['status'] === 'active') ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>';
                     $actions = '<button type="button" class="btn btn-sm btn-outline-primary edit-customer-btn" data-id="' . $row['id'] . '">Edit</button> ' .
                                '<button type="button" class="btn btn-sm btn-outline-danger delete-customer-btn" data-id="' . $row['id'] . '">Delete</button>';
-                    $response['data'][] = [$row['id'], htmlspecialchars($row['customer_name']), htmlspecialchars($row['contact_person']), htmlspecialchars($row['contact_phone']), htmlspecialchars($row['city']), $status_badge, $actions];
+                    // Adjusted data array: Removed contact_person (index 2) and contact_phone (index 3)
+                    // New order: ID, Customer Name, City, Status, Actions
+                    $response['data'][] = [
+                        $row['id'],
+                        htmlspecialchars($row['customer_name']),
+                        htmlspecialchars($row['city']),
+                        $status_badge,
+                        $actions
+                    ];
                 }
                 $response['success'] = true;
             } else { $response['message'] = "API Error: Failed to execute statement."; }
@@ -42,7 +51,8 @@ switch ($request_type) {
     case 'get_customer_details':
         $customer_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
         if ($customer_id > 0) {
-            $sql = "SELECT * FROM customers WHERE id = ? AND company_id = ?";
+            // SQL query updated: Explicitly selecting columns, removed contact_person, contact_email, contact_phone
+            $sql = "SELECT id, customer_name, address_line_1, address_line_2, city, state_province, postal_code, notes, status FROM customers WHERE id = ? AND company_id = ?";
             if ($stmt = mysqli_prepare($link, $sql)) {
                 mysqli_stmt_bind_param($stmt, "ii", $customer_id, $company_id);
                 if (mysqli_stmt_execute($stmt)) {
@@ -63,12 +73,22 @@ switch ($request_type) {
             $response['message'] = 'Customer ID and Name are required.';
             break;
         }
-        $sql = "UPDATE customers SET customer_name=?, contact_person=?, contact_email=?, contact_phone=?, address_line_1=?, address_line_2=?, city=?, state_province=?, postal_code=?, status=?, notes=? WHERE id=? AND company_id=?";
+        // SQL query updated: Removed contact_person, contact_email, contact_phone
+        $sql = "UPDATE customers SET customer_name=?, address_line_1=?, address_line_2=?, city=?, state_province=?, postal_code=?, status=?, notes=? WHERE id=? AND company_id=?";
         if($stmt = mysqli_prepare($link, $sql)){
-            mysqli_stmt_bind_param($stmt, "ssssssssssiii", 
-                $_POST['customer_name'], $_POST['contact_person'], $_POST['contact_email'], $_POST['contact_phone'], 
-                $_POST['address_line_1'], $_POST['address_line_2'], $_POST['city'], $_POST['state_province'], 
-                $_POST['postal_code'], $_POST['status'], $_POST['notes'], $_POST['id'], $company_id);
+            // mysqli_stmt_bind_param updated: Removed 'ssss' for contact_person, contact_email, contact_phone
+            mysqli_stmt_bind_param($stmt, "sssssssii",
+                $_POST['customer_name'],
+                $_POST['address_line_1'],
+                $_POST['address_line_2'],
+                $_POST['city'],
+                $_POST['state_province'],
+                $_POST['postal_code'],
+                $_POST['status'],
+                $_POST['notes'],
+                $_POST['id'],
+                $company_id
+            );
             if(mysqli_stmt_execute($stmt)){
                 $response['success'] = true;
                 $response['message'] = 'Customer updated successfully!';

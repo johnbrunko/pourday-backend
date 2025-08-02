@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Activity Report</title>
+    <style>
+        <?php echo $cssContent; ?>
+
+        /* --- Custom Styles for Activity Report --- */
+        .cover-page { text-align: center; }
+        .cover-logo { max-width: 300px; max-height: 120px; margin-bottom: 40px; }
+        .cover-details-table { width: 80%; margin: 0 auto 40px auto; text-align: left; border-collapse: collapse; }
+        .cover-details-table td { border: 1px solid #ccc; padding: 10px; font-size: 12pt; }
+        .cover-details-table td:first-child { font-weight: bold; width: 30%; background-color: #f2f2f2; }
+        .toc { text-align: left; width: 80%; margin: 0 auto; }
+        .toc h3 { text-align: center; color: #333; }
+        .toc ul { list-style-type: none; padding-left: 0; }
+        .toc li { font-size: 14pt; margin-bottom: 10px; }
+        .toc a { text-decoration: none; color: #178aa5; }
+        
+        /* Default style for section titles, forces a new page */
+        .section-title { border-bottom: 2px solid #178aa5; padding-bottom: 5px; margin-bottom: 20px; page-break-before: always; }
+        
+        /* Special style for the first section title to prevent double page breaks after the cover */
+        .first-section-title { border-bottom: 2px solid #178aa5; padding-bottom: 5px; margin-bottom: 20px; }
+
+        .photo-record-container { width: 100%; }
+        .photo-item { display: inline-block; width: 48%; margin-bottom: 20px; vertical-align: top; page-break-inside: avoid; }
+        .photo-item.full-width { width: 100%; }
+        .photo-item img { max-width: 100%; border: 1px solid #ddd; }
+        .photo-caption { font-size: 9pt; margin-top: 5px; }
+        .chart-container { text-align: center; page-break-inside: avoid; }
+        .chart-container img { max-width: 90%; margin-bottom: 20px; }
+        .cover-page-header-overlay { position: fixed; top: -75px; left: 0px; right: 0px; height: 75px; background-color: #fff; }
+        
+        .tight-margin {
+            margin-bottom: 5px !important;
+        }
+        .section-wrapper {
+            page-break-inside: avoid;
+        }
+        /* Previous CSS to hide header/footer on first page removed as it was not effective */
+    </style>
+</head>
+<body>
+    <?php
+    // Flag to control header/footer visibility, true for the first page (cover)
+    $isFirstRenderedPage = true;
+    ?>
+
+    <main>
+        <div class="cover-page" style="page-break-after: always;">
+            <div class="cover-page-header-overlay"></div>
+            <?php if ($logoLocalPath): ?><img src="<?php echo $logoLocalPath; ?>" class="cover-logo" alt="Company Logo"><?php endif; ?>
+            <table class="cover-details-table">
+                <tr><td>Job Name</td><td><?php echo htmlspecialchars($mainDetails['job_name']); ?></td></tr>
+                <tr><td>Location</td><td><?php echo htmlspecialchars($mainDetails['city'] . ', ' . $mainDetails['state']); ?></td></tr>
+                <tr><td>Client</td><td><?php echo htmlspecialchars($mainDetails['customer_name']); ?></td></tr>
+                <tr><td>Area</td><td><?php echo htmlspecialchars($mainDetails['task_title']); ?></td></tr>
+                <tr><td>Prepared By</td><td><?php echo htmlspecialchars($preparerName); ?></td></tr>
+                <tr><td>Date</td><td><?php echo (new DateTime($mainDetails['scheduled'] ?? 'now'))->format('Y-m-d'); ?></td></tr>
+            </table>
+            <div class="toc">
+                <h3>Contents</h3>
+                <ul>
+                    <?php if(!empty($reportEntries)): ?><li><a href="#pour_assessment">1. Pour Assessment</a></li><?php endif; ?>
+                    <?php if($fflReportData): ?><li><a href="#ffl_analysis">2. FF/FL Analysis</a></li><?php endif; ?>
+                    <?php if(!empty($weatherCharts)): ?><li><a href="#atmospheric_conditions">3. Atmospheric Conditions</a></li><?php endif; ?>
+                    <?php if(!empty($selectedPhotos)): ?><li><a href="#image_record">4. Images</a></li><?php endif; ?>
+                </ul>
+            </div>
+        </div>
+
+        <?php
+        // After the cover page, set the flag to false so header/footer can be rendered
+        $isFirstRenderedPage = false;
+        $isFirstSection = true; // This variable should only be true for the first *content* section
+
+        function print_section_header($id, $title, &$isFirstSection) {
+            // Apply 'first-section-title' only to the first actual content section after the cover
+            $class = $isFirstSection ? 'first-section-title' : 'section-title';
+            echo "<h4 id=\"$id\" class=\"$class\">$title</h4>";
+            $isFirstSection = false;
+        }
+        ?>
+
+        <?php if (!$isFirstRenderedPage): ?>
+            <header>
+                <table class="header-table"><tr>
+                    <td class="header-left"><p><strong>Project:</strong> <?php echo htmlspecialchars($mainDetails['job_name']); ?></p><p><strong>Report:</strong> Activity Report</p></td>
+                    <td class="header-right"><?php echo $logoLocalPath ? '<img src="' . $logoLocalPath . '" class="company-logo">' : ''; ?></td>
+                </tr></table>
+            </header>
+            <footer>
+                <table class="footer-table"><tr>
+                    <td class="footer-left"><?php echo htmlspecialchars($companyData['company_name']); ?></td>
+                    <td class="footer-center page-number"></td>
+                    <td class="footer-right">Revolutionizing Concrete</td>
+                </tr></table>
+            </footer>
+        <?php endif; ?>
+
+        <?php if (!empty($reportEntries)): ?>
+            <div class="section-wrapper">
+                <?php print_section_header('pour_assessment', '1. Pour Assessment', $isFirstSection); ?>
+                <?php foreach ($reportEntries as $category => $entries): ?>
+                    <h5><?php echo htmlspecialchars($category); ?></h5>
+                    <ul><?php foreach ($entries as $text): ?><li><?php echo htmlspecialchars($text); ?></li><?php endforeach; ?></ul>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($fflReportData): ?>
+            <div class="section-wrapper">
+                <?php print_section_header('ffl_analysis', '2. FF/FL Analysis', $isFirstSection); ?>
+                
+                <h4>Contract Specifications</h4>
+                <table class="spec-table-container tight-margin">
+                    <tr>
+                        <td>
+                            <table class="spec-table">
+                                <thead><tr><th class="table-title" colspan="2">Specified FF Value</th></tr></thead>
+                                <tbody>
+                                    <tr><td>Overall</td><td><?php echo htmlspecialchars($fflReportData['spec_overall_ff'] ?? 'N/A'); ?></td></tr>
+                                    <tr><td>Minimum Local</td><td><?php echo htmlspecialchars($fflReportData['spec_min_local_ff'] ?? 'N/A'); ?></td></tr>
+                                </tbody>
+                            </table>
+                        </td>
+                        <td>
+                            <table class="spec-table">
+                                <thead><tr><th class="table-title" colspan="2">Specified FL Values</th></tr></thead>
+                                <tbody>
+                                    <tr><td>Overall</td><td><?php echo htmlspecialchars($fflReportData['spec_overall_fl'] ?? 'N/A'); ?></td></tr>
+                                    <tr><td>Minimum Local</td><td><?php echo htmlspecialchars($fflReportData['spec_min_local_fl'] ?? 'N/A'); ?></td></tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="spec-table tight-margin">
+                    <thead><tr><th class="table-title" colspan="2">Test Section Detail</th></tr></thead>
+                    <tbody>
+                        <tr><td>Surface Area</td><td><?php echo htmlspecialchars($fflReportData['surface_area'] ?? 'N/A'); ?></td></tr>
+                        <tr><td>Minimum Readings Required</td><td><?php echo htmlspecialchars($fflReportData['min_readings_required'] ?? 'N/A'); ?></td></tr>
+                        <tr><td>Total Number of Readings</td><td><?php echo htmlspecialchars($fflReportData['total_readings_taken'] ?? 'N/A'); ?></td></tr>
+                    </tbody>
+                </table>
+
+                <?php if (!empty($compositeFNumbers)): ?>
+                <h4>Composite F-Numbers</h4>
+                <table>
+                    <thead><tr><th>Metric</th><th>Overall</th><th>90% Conf.</th><th>SOV P/F</th><th>Min</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
+                    <tbody>
+                        <?php foreach ($compositeFNumbers as $row): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($row['metric']); ?></td>
+                            <td><?php echo htmlspecialchars($row['overall_value']); ?></td>
+                            <td><?php echo htmlspecialchars(preg_replace('/\s+/', ' <=> ', trim($row['conf_interval_90']))); ?></td>
+                            <td class="<?php echo strtolower(htmlspecialchars(trim($row['sov_pass_fail']))); ?>"><?php echo htmlspecialchars($row['sov_pass_fail']); ?></td>
+                            <td><?php htmlspecialchars($row['min_value']); ?></td>
+                            <td><?php echo htmlspecialchars(preg_replace('/\s+/', ' <=> ', trim($row['min_conf_interval_90']))); ?></td>
+                            <td class="<?php echo strtolower(htmlspecialchars(trim($row['mlv_pass_fail']))); ?>"><?php echo htmlspecialchars($row['mlv_pass_fail']); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+
+                <?php if ($fflImageLocalPath): ?>
+                    <div class="image-container" style="text-align: center; margin-top: 20px; page-break-after: avoid;">
+                        <h4>Testing Map</h4>
+                        <img src="<?php echo $fflImageLocalPath; ?>" class="report-image" style="max-width: 80%;">
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($weatherCharts)): ?>
+            <div class="section-wrapper">
+                <?php print_section_header('atmospheric_conditions', '3. Atmospheric Conditions', $isFirstSection); ?>
+                <div class="chart-container">
+                    <?php foreach($weatherCharts as $chartLocalPath): ?>
+                        <?php if($chartLocalPath): ?><img src="<?php echo $chartLocalPath; ?>"><?php endif; ?>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($selectedPhotos)): ?>
+            <div class="section-wrapper">
+                <?php print_section_header('image_record', '4. Images', $isFirstSection); ?>
+                <div class="photo-record-container">
+                    <?php
+                    $portraitBuffer = [];
+                    foreach ($selectedPhotos as $photo) {
+                        if (empty($photo['local_path'])) continue;
+                        $isPortrait = ($photo['image_height'] ?? 0) > ($photo['image_width'] ?? 0);
+                        if ($isPortrait) {
+                            $portraitBuffer[] = $photo;
+                            if (count($portraitBuffer) == 2) {
+                                echo '<div class="photo-item"><img src="'.$portraitBuffer[0]['local_path'].'"><div class="photo-caption"><strong>'.$portraitBuffer[0]['activity_name'].':</strong> '.htmlspecialchars($portraitBuffer[0]['comments']).'</div></div>';
+                                echo '<div class="photo-item"><img src="'.$portraitBuffer[1]['local_path'].'"><div class="photo-caption"><strong>'.$portraitBuffer[1]['activity_name'].':</strong> '.htmlspecialchars($portraitBuffer[1]['comments']).'</div></div>';
+                                $portraitBuffer = [];
+                            }
+                        } else {
+                            if (!empty($portraitBuffer)) {
+                                echo '<div class="photo-item full-width"><img src="'.$portraitBuffer[0]['local_path'].'"><div class="photo-caption"><strong>'.$portraitBuffer[0]['activity_name'].':</strong> '.htmlspecialchars($portraitBuffer[0]['comments']).'</div></div>';
+                                $portraitBuffer = [];
+                            }
+                            echo '<div class="photo-item full-width"><img src="'.$photo['local_path'].'"><div class="photo-caption"><strong>'.$photo['activity_name'].':</strong> '.htmlspecialchars($photo['comments']).'</div></div>';
+                        }
+                    }
+                    if (!empty($portraitBuffer)) {
+                        echo '<div class="photo-item full-width"><img src="'.$portraitBuffer[0]['local_path'].'"><div class="photo-caption"><strong>'.$portraitBuffer[0]['activity_name'].':</strong> '.htmlspecialchars($portraitBuffer[0]['comments']).'</div></div>';
+                    }
+                    ?>
+                </div>
+            </div>
+        <?php endif; ?>
+    </main>
+</body>
+</html>

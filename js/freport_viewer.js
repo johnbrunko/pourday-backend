@@ -5,7 +5,6 @@ $(document).ready(function() {
     const userSelect = $('#userSelection');
     const viewReportBtn = $('#viewReportBtn');
     const downloadPdfBtn = $('#downloadPdfBtn');
-    const reportSelectionCard = $('#reportSelectionCard');
     const reportDisplayContainer = $('#reportDisplayContainer');
     const reportDisplayFrame = $('#reportDisplayFrame');
     const reportTitle = $('#reportTitle');
@@ -59,7 +58,7 @@ $(document).ready(function() {
                         response.data.forEach(report => {
                             reportSelect.append($('<option>', { value: report.id, text: report.report_name }));
                         });
-                        userSelect.prop('disabled', false); // Enable user selection
+                        userSelect.prop('disabled', false);
                     } else {
                         reportSelect.html('<option value="">No reports found</option>');
                     }
@@ -99,7 +98,7 @@ $(document).ready(function() {
         .done(function(blob, status, xhr) {
             if (blob.type === 'application/pdf') {
                 const disposition = xhr.getResponseHeader('Content-Disposition');
-                let filename = `report-${reportId}.pdf`; // Fallback
+                let filename = `report-${reportId}.pdf`;
                 if (disposition && disposition.indexOf('attachment') !== -1) {
                     const matches = /filename="?([^"]+)"?/.exec(disposition);
                     if (matches && matches[1]) filename = matches[1];
@@ -136,10 +135,12 @@ $(document).ready(function() {
         frameDoc.write('<body><p style="font-family: sans-serif; padding: 1rem;"><em>Loading...</em></p></body>');
         frameDoc.close();
 
+        // The API call now needs to fetch all data, including what's needed for the intro.
+        // We assume freport_actions.php joins projects and contacts to get this info.
         $.getJSON(`api/freport_actions.php?action=get_report_details&report_id=${reportId}`)
             .done(function(response) {
                 if (response.success) {
-                    reportTitle.text(`Report: ${response.data.report_details.report_name}`);
+                    reportTitle.text(`Report Preview: ${response.data.report_details.report_name}`);
                     renderReportInFrame(response.data);
                 } else {
                     frameDoc.open();
@@ -156,28 +157,106 @@ $(document).ready(function() {
 
     function renderReportInFrame(data) {
         const details = data.report_details;
-        let bodyHtml = '';
+        let bodyHtml = '<main>';
 
-        // --- Specifications Table ---
-        if (details) {
-            bodyHtml += `<h5>Report Specifications</h5><table class="table table-bordered table-sm"><tbody>
-                <tr><th>Overall FF Spec</th><td>${details.spec_overall_ff}</td><th>Overall FL Spec</th><td>${details.spec_overall_fl}</td></tr>
-                <tr><th>Minimum Local FF Spec</th><td>${details.spec_min_local_ff}</td><th>Minimum Local FL Spec</th><td>${details.spec_min_local_fl}</td></tr>
-                <tr><th>Surface Area</th><td>${details.surface_area}</td><th>Readings Required</th><td>${details.min_readings_required}</td></tr>
-                <tr><th>Readings Taken</th><td>${details.total_readings_taken}</td><th>Original Filename</th><td>${details.original_filename}</td></tr>
-            </tbody></table>`;
+        // --- NEW: Build the Cover Page (Intro) ---
+        let pourStatus = 'met';
+        if (data.composite_f_numbers && data.composite_f_numbers.length > 0) {
+            for (const row of data.composite_f_numbers) {
+                if ((row.sov_pass_fail || '').toLowerCase() === 'fail' || (row.mlv_pass_fail || '').toLowerCase() === 'fail') {
+                    pourStatus = 'did not meet';
+                    break;
+                }
+            }
         }
+        
+        // MODIFIED: Use the task's 'scheduled' date if available, otherwise fallback to the upload timestamp.
+        const dateToUse = details.scheduled || details.upload_timestamp;
+        const pourDate = new Date(dateToUse).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        
+        let attnLine = 'Attn: ';
+        const attnParts = [];
+        if(details.contact_title) attnParts.push(details.contact_title);
+        const contactName = `${details.contact_first_name || ''} ${details.contact_last_name || ''}`.trim();
+        if(contactName) attnParts.push(contactName);
+        attnLine += attnParts.join(', ');
+
+        const addressLine = [details.city, details.state, details.zip].filter(Boolean).join(', ');
+
+        bodyHtml += `<div class="pdf-section intro-text">
+            <h3 class="report-main-title">FF/FL ANALYSIS (ASTM E1155) REPORT</h3>
+            <p style="line-height: 1.6; margin-bottom: 20px;">
+                <strong>${attnLine}</strong><br>
+                <strong>${details.customer_name || ''}</strong><br>
+                <strong>Regarding:</strong><br>
+                <strong>${details.job_name || ''}</strong><br>
+                <strong>${addressLine}</strong>
+            </p>
+            <p>As requested, FST was present to observe and provide VS309 Oversite services during the placement of ${details.report_name} on ${pourDate}. The specified F<sub>F</sub> and F<sub>L</sub> values for this pour were ${details.spec_overall_ff} and ${details.spec_overall_fl}. The pour ${pourStatus} these values. Individual readings were also then compared against minimum local values to "establish the minimum surface quality that would be acceptable anywhere on any of the concrete placements".</p>
+            <h3>Scope</h3>
+            <p>The testing performed by FST adheres to ASTM 1155 for individual test sections to provide a record of placement performance for an individual pour. ACI 117 states that " the specified overall values...are the F<sub>F</sub> and F<sub>L</sub> to which the completed project floor surface must conform viewed in its entirety". A combined overall F<sub>F</sub>/F<sub>L</sub> report may not be produced until the slab is completed.</p>
+            <p>Please note that F<sub>L</sub> values are typically not evaluated for elevated decks due to the inherent sag and deflection associated with these structures. In those cases, the results here are shared for informational purposes and may be consulted to provide guidance for shoring plans for subsequent pours.</p>
+            <h3>Testing Procedures</h3>
+            <p>All tests were performed using 3D Laser Scanning as a data collection method per ASTM E1155. All tested surfaces were then analyzed before test completion to ensure that penetrations, walls, joints, forms and columns were provided two feet of clearance. A map of the samples taken and individual readings is included in this report for reference.</p>
+            <h3>F<sub>F</sub>/F<sub>L</sub> and Flooring Tolerances</h3>
+            <p>The nature of F<sub>F</sub>/F<sub>L</sub> testing and its results does not immediately translate to manufacturer flooring tolerances. F<sub>F</sub> numbers are greatly affected by the number of variances present in a sample run, meaning that an 1/8" in 10 ft can still produce a low result if that variance occurs repeatedly. VS309 Oversite allows for smoother corrections, typically resulting in a finished floor that exceeds manufacturer specifications.</p>
+            <p>The following comparisons are then provided for reference only:</p>
+            <ul>
+                <li>F<sub>F</sub> 25-35 is typically equal to approximately 1/4" in 10'</li>
+                <li>F<sub>F</sub> 50-60 is typically equal to approximately 1/8" in 10'</li>
+                <li>F<sub>F</sub> 100 is typically equal to approximately 1/16" in 10'</li>
+            </ul>
+            <p>This report was prepared by ${details.uploader_first_name || ''} ${details.uploader_last_name || ''}</p>
+            <p style="margin-top: 20px;"><strong>Measurement Units:</strong> U.S. Survey Feet</p>
+        </div>`;
+
+        // --- Contract Specifications ---
+        bodyHtml += `<h4>Contract Specifications</h4>
+        <table class="spec-table-container">
+            <tr>
+                <td>
+                    <table class="spec-table">
+                        <thead><tr><th class="table-title" colspan="2">Specified FF Value</th></tr></thead>
+                        <tbody>
+                            <tr><td>Overall</td><td>${details.spec_overall_ff || 'N/A'}</td></tr>
+                            <tr><td>Minimum Local</td><td>${details.spec_min_local_ff || 'N/A'}</td></tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table class="spec-table">
+                        <thead><tr><th class="table-title" colspan="2">Specified FL Values</th></tr></thead>
+                        <tbody>
+                            <tr><td>Overall</td><td>${details.spec_overall_fl || 'N/A'}</td></tr>
+                            <tr><td>Minimum Local</td><td>${details.spec_min_local_fl || 'N/A'}</td></tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </table>`;
+
+        // --- Test Section Detail ---
+        bodyHtml += `<table class="spec-table">
+            <thead><tr><th class="table-title" colspan="2">Test Section Detail</th></tr></thead>
+            <tbody>
+                <tr><td>Surface Area</td><td>${details.surface_area || 'N/A'}</td></tr>
+                <tr><td>Minimum Readings Required</td><td>${details.min_readings_required || 'N/A'}</td></tr>
+                <tr><td>Total Number of Readings</td><td>${details.total_readings_taken || 'N/A'}</td></tr>
+            </tbody>
+        </table>`;
         
         // --- Composite F-Numbers Table ---
         if (data.composite_f_numbers && data.composite_f_numbers.length > 0) {
-            bodyHtml += `<h5 class="mt-4">Composite F-Numbers</h5><table class="table table-bordered table-sm"><thead><tr>
-                <th>Metric</th><th>Overall</th><th>90% Conf.</th><th>SOV Pass/Fail</th>
-                <th>Min</th><th>90% Conf.</th><th>MLV Pass/Fail</th>
+            bodyHtml += `<h4 class="mt-4">Composite F-Numbers</h4><table><thead><tr>
+                <th>Metric</th><th>Overall</th><th>90% Conf.</th><th>SOV P/F</th>
+                <th>Min</th><th>90% Conf.</th><th>MLV P/F</th>
             </tr></thead><tbody>`;
             data.composite_f_numbers.forEach(row => {
                 bodyHtml += `<tr>
-                    <td>${row.metric}</td><td>${row.overall_value}</td><td>${row.conf_interval_90}</td><td>${row.sov_pass_fail}</td>
-                    <td>${row.min_value}</td><td>${row.min_conf_interval_90}</td><td>${row.mlv_pass_fail}</td>
+                    <td>${row.metric || ''}</td><td>${row.overall_value || ''}</td><td>${row.conf_interval_90 || ''}</td>
+                    <td class="${(row.sov_pass_fail || '').toLowerCase()}">${row.sov_pass_fail || ''}</td>
+                    <td>${row.min_value || ''}</td><td>${row.min_conf_interval_90 || ''}</td>
+                    <td class="${(row.mlv_pass_fail || '').toLowerCase()}">${row.mlv_pass_fail || ''}</td>
                 </tr>`;
             });
             bodyHtml += `</tbody></table>`;
@@ -185,7 +264,10 @@ $(document).ready(function() {
 
         // --- Image ---
         if (details && details.image_full_path) {
-             bodyHtml += `<h5 class="mt-4">Testing Map</h5><div class="text-center"><img src="${details.image_full_path}" class="img-fluid border rounded"></div>`;
+             bodyHtml += `<div class="image-container">
+                 <h4 class="mt-4">Testing Map</h4>
+                 <div class="text-center"><img src="${details.image_full_path}" class="report-image"></div>
+               </div>`;
         }
 
         // --- Sample F-Numbers Tables ---
@@ -195,19 +277,26 @@ $(document).ready(function() {
                 return acc;
             }, {});
             
-            bodyHtml += `<h5 class="mt-4">Sample F-Numbers</h5>`;
+            bodyHtml += `<h4 class="mt-4">Sample F-Numbers</h4>`;
             for (const sampleName in samples) {
-                bodyHtml += `<h6 class="mt-3"><em>${sampleName}</em></h6><table class="table table-bordered table-sm"><thead><tr>
-                    <th>Metric</th><th>Overall Value</th><th>90% Conf.</th><th>MLV Pass/Fail</th>
-                </tr></thead><tbody>`;
+                const cleanSampleName = sampleName.replace(/Sample \(HTML Table (\d+)\)/, 'Sample $1');
+                bodyHtml += `<div class="sample-section">
+                    <h5>${cleanSampleName}</h5>
+                    <table class="sample-table">
+                        <colgroup><col class="metric"><col class="value"><col class="conf"><col class="passfail"></colgroup>
+                        <thead><tr><th>Metric</th><th>Overall Value</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
+                        <tbody>`;
                 samples[sampleName].forEach(row => {
-                     bodyHtml += `<tr>
-                        <td>${row.metric}</td><td>${row.overall_value}</td><td>${row.conf_interval_90}</td><td>${row.mlv_pass_fail}</td>
+                    bodyHtml += `<tr>
+                        <td>${row.metric || ''}</td><td>${row.overall_value || ''}</td><td>${row.conf_interval_90 || ''}</td>
+                        <td class="${(row.mlv_pass_fail || '').toLowerCase()}">${row.mlv_pass_fail || ''}</td>
                     </tr>`;
                 });
-                bodyHtml += `</tbody></table>`;
+                bodyHtml += `</tbody></table></div>`;
             }
         }
+
+        bodyHtml += '</main>';
 
         // --- Final HTML for Iframe ---
         const fullHtml = `
@@ -216,8 +305,11 @@ $(document).ready(function() {
             <head>
                 <meta charset="UTF-8">
                 <title>Report Preview</title>
-                <link href="https://cdn.jsdelivr.net/npm/@trimble-oss/modus-bootstrap@2.0.12/dist/css/modus-bootstrap.min.css" rel="stylesheet">
-                <style> body { padding: 1rem; } </style>
+                <style>
+                    body { margin: 0; padding: 1.5rem; background-color: #fff; } 
+                    main { max-width: 800px; margin: 0 auto; }
+                    ${pdfReportCss}
+                </style>
             </head>
             <body>${bodyHtml || '<p>No data to display.</p>'}</body>
             </html>`;

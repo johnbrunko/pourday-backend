@@ -1,8 +1,6 @@
 <?php
 session_start();
-// This should be your new project's connection file
 require_once dirname(__DIR__) . '/config/db_connect.php'; 
-// Include the Composer autoloader for Dompdf and AWS SDK
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use Aws\S3\S3Client;
@@ -10,9 +8,25 @@ use Aws\Exception\AwsException;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
-// --- Initial Setup & Validation ---
-$reportId = filter_var($_GET['report_id'] ?? null, FILTER_VALIDATE_INT);
+/**
+ * Helper function to format confidence interval strings.
+ */
+function format_interval($value) {
+    if (is_null($value) || trim($value) === '') { return ''; }
+    return htmlspecialchars(preg_replace('/\s+/', ' <=> ', trim($value)));
+}
 
+/**
+ * Helper function to format Pass/Fail table cells.
+ */
+function format_status_cell($status) {
+    if (is_null($status) || trim($status) === '') { return '<td>N/A</td>'; }
+    $clean_status = htmlspecialchars(trim($status));
+    $class = strtolower($clean_status);
+    return '<td class="' . $class . '">' . $clean_status . '</td>';
+}
+
+$reportId = filter_var($_GET['report_id'] ?? null, FILTER_VALIDATE_INT);
 if (!$reportId) {
     header('Content-Type: application/json');
     http_response_code(400);
@@ -21,77 +35,83 @@ if (!$reportId) {
 }
 
 try {
-    // --- 1. Fetch All Report Data ---
     $company_id = $_SESSION['company_id'];
-
-    // Main query to get report details and join with project info
+    
+    // --- 1. Fetch Data ---
     $stmt_details = $link->prepare("
-        SELECT fr.*, p.job_name 
-        FROM uploaded_freports fr
-        JOIN projects p ON fr.project_id = p.id
+        SELECT 
+            fr.*, 
+            t.scheduled,
+            p.job_name, p.street_1, p.street_2, p.city, p.state, p.zip, 
+            cust.customer_name, 
+            c1.first_name AS contact_first_name, c1.last_name AS contact_last_name, c1.title AS contact_title, 
+            uploader.first_name AS uploader_first_name, uploader.last_name AS uploader_last_name 
+        FROM uploaded_freports fr 
+        JOIN projects p ON fr.project_id = p.id 
+        JOIN customers cust ON p.customer_id = cust.id 
+        LEFT JOIN contacts c1 ON p.contact_id_1 = c1.id 
+        LEFT JOIN users uploader ON fr.user_id = uploader.id
+        LEFT JOIN tasks t ON fr.task_id = t.id
         WHERE fr.id = ? AND fr.company_id = ?
     ");
     $stmt_details->bind_param("ii", $reportId, $company_id);
     $stmt_details->execute();
-    $detailsResult = $stmt_details->get_result();
-    $reportData = $detailsResult->fetch_assoc();
+    $reportData = $stmt_details->get_result()->fetch_assoc();
 
-    if (!$reportData) {
-        throw new Exception("Report not found or permission denied.");
-    }
-    
-    // Fetch Composite F-Numbers
+    if (!$reportData) { throw new Exception("Report not found or permission denied."); }
+
     $stmt_composite = $link->prepare("SELECT * FROM freport_composite WHERE report_id = ?");
     $stmt_composite->bind_param("i", $reportId);
     $stmt_composite->execute();
-    $compositeResult = $stmt_composite->get_result();
-    $compositeFNumbers = $compositeResult->fetch_all(MYSQLI_ASSOC);
+    $compositeFNumbers = $stmt_composite->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // Fetch Sample F-Numbers
     $stmt_sample = $link->prepare("SELECT * FROM freport_sample WHERE report_id = ? ORDER BY source_html_table_index, id");
     $stmt_sample->bind_param("i", $reportId);
     $stmt_sample->execute();
-    $sampleResult = $stmt_sample->get_result();
-    $sampleFNumbers = $sampleResult->fetch_all(MYSQLI_ASSOC);
+    $sampleFNumbers = $stmt_sample->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // --- 2. Determine Preparer's Name ---
+    $stmt_company = $link->prepare("SELECT company_name, logo FROM companies WHERE id = ?");
+    $stmt_company->bind_param("i", $company_id);
+    $stmt_company->execute();
+    $companyData = $stmt_company->get_result()->fetch_assoc();
+
     $selectedUserId = filter_var($_GET['selected_user_id'] ?? null, FILTER_VALIDATE_INT);
-    $preparerName = 'N/A';
     $userIdToQuery = $selectedUserId ?: $reportData['user_id'];
+    $stmt_user = $link->prepare("SELECT first_name, last_name FROM users WHERE id = ?");
+    $stmt_user->bind_param("i", $userIdToQuery);
+    $stmt_user->execute();
+    $user = $stmt_user->get_result()->fetch_assoc();
+    $preparer_first_name = $user['first_name'] ?? 'N/A';
+    $preparer_last_name = $user['last_name'] ?? '';
 
-    if ($userIdToQuery) {
-        $stmt_user = $link->prepare("SELECT first_name, last_name FROM users WHERE id = ?");
-        $stmt_user->bind_param("i", $userIdToQuery);
-        $stmt_user->execute();
-        $userResult = $stmt_user->get_result();
-        if ($user = $userResult->fetch_assoc()) {
-            $preparerName = trim($user['first_name'] . ' ' . $user['last_name']);
-        }
-    }
-    
-    // --- 3. Fetch Image from Wasabi and Base64 Encode ---
+    // --- 2. Fetch Images ---
     $imageDataUri = null;
+    $logoDataUri = null;
+    $wasabiConfig = include(dirname(__DIR__) . '/config/wasabi_config.php');
+    $s3Client = new S3Client(['version' => 'latest', 'region' => $wasabiConfig['region'], 'endpoint' => $wasabiConfig['endpoint'], 'credentials' => ['key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret']], 'http' => ['verify' => dirname(__DIR__) . '/config/cacert.pem']]);
     if (!empty($reportData['report_image_key'])) {
-        try {
-            $wasabiConfig = include(dirname(__DIR__) . '/config/wasabi_config.php');
-            $s3Client = new S3Client([
-                'version'     => 'latest',
-                'region'      => $wasabiConfig['region'],
-                'endpoint'    => $wasabiConfig['endpoint'],
-                'credentials' => ['key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret']]
-            ]);
-            $result = $s3Client->getObject([
-                'Bucket' => $wasabiConfig['bucket'],
-                'Key'    => $reportData['report_image_key'],
-            ]);
-            $imageDataUri = 'data:' . $result['ContentType'] . ';base64,' . base64_encode($result['Body']->getContents());
-        } catch (Exception $e) {
-            error_log("Could not fetch image from Wasabi: " . $e->getMessage());
-            // Fail gracefully, the PDF will just show a "not found" message.
-        }
+        $resultImg = $s3Client->getObject(['Bucket' => $wasabiConfig['bucket'], 'Key' => $reportData['report_image_key']]);
+        $imageDataUri = 'data:' . $resultImg['ContentType'] . ';base64,' . base64_encode($resultImg['Body']->getContents());
     }
+    if (!empty($companyData['logo'])) {
+        $resultLogo = $s3Client->getObject(['Bucket' => $wasabiConfig['bucket'], 'Key' => $companyData['logo']]);
+        $contentType = $resultLogo['ContentType'];
+        if ($contentType === 'application/octet-stream') {
+            $fileExtension = strtolower(pathinfo($companyData['logo'], PATHINFO_EXTENSION));
+            $mimeTypes = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif'];
+            $contentType = $mimeTypes[$fileExtension] ?? 'application/octet-stream';
+        }
+        $logoDataUri = 'data:' . $contentType . ';base64,' . base64_encode($resultLogo['Body']->getContents());
+    }
+
+    // --- 3. Prepare Variables for Templates ---
+    foreach (['contact_first_name', 'contact_last_name', 'contact_title', 'customer_name', 'job_name', 'street_1', 'street_2', 'city', 'state', 'zip', 'report_name', 'upload_timestamp', 'scheduled', 'spec_overall_ff', 'spec_overall_fl', 'uploader_first_name', 'uploader_last_name'] as $key) {
+        $$key = $reportData[$key] ?? null;
+    }
+
+    // --- 4. Build HTML Document ---
+    $cssContent = file_get_contents(dirname(__DIR__) . '/css/pdf_report.css');
     
-    // --- 4. Build HTML for the PDF ---
     ob_start();
     ?>
     <!DOCTYPE html>
@@ -99,64 +119,81 @@ try {
     <head>
         <meta charset="UTF-8">
         <title>F-Number Report: <?php echo htmlspecialchars($reportData['report_name']); ?></title>
-        <style>
-            @page { margin: 100px 50px; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 12px; color: #333; }
-            header { position: fixed; top: -80px; left: 0; right: 0; height: 60px; text-align: center; border-bottom: 1px solid #ddd; }
-            footer { position: fixed; bottom: -60px; left: 0; right: 0; height: 40px; text-align: center; font-size: 10px; color: #777; }
-            h1, h2, h3, h4, h5 { margin: 15px 0 5px 0; color: #005f9e; }
-            h1 { font-size: 24px; } h2 { font-size: 20px; } h3 { font-size: 16px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-            th { background-color: #f2f2f2; font-weight: bold; }
-            .report-image { max-width: 100%; height: auto; margin-top: 10px; border: 1px solid #ddd; }
-            .text-center { text-align: center; }
-        </style>
+        <style><?php echo $cssContent; ?></style>
     </head>
     <body>
         <header>
-            <h1>F-Number Analysis Report</h1>
-            <p><strong>Project:</strong> <?php echo htmlspecialchars($reportData['job_name']); ?></p>
+            <table class="header-table"><tr>
+                <td class="header-left"><p><strong>Project:</strong> <?php echo htmlspecialchars($reportData['job_name']); ?></p><p><strong>Report:</strong> <?php echo htmlspecialchars($reportData['report_name']); ?></p></td>
+                <td class="header-right"><?php echo $logoDataUri ? '<img src="' . $logoDataUri . '" class="company-logo">' : ''; ?></td>
+            </tr></table>
         </header>
         <footer>
-            Report generated on <?php echo date("Y-m-d H:i:s"); ?> by PourDay App.
+            <table class="footer-table"><tr>
+                <td class="footer-left"><?php echo htmlspecialchars($companyData['company_name']); ?></td>
+                <td class="footer-center page-number"></td>
+                <td class="footer-right">Revolutionizing Concrete</td>
+            </tr></table>
         </footer>
         <main>
-            <h3><?php echo htmlspecialchars($reportData['report_name']); ?></h3>
-            <p><strong>Prepared By:</strong> <?php echo htmlspecialchars($preparerName); ?></p>
+            <?php include dirname(__DIR__) . '/components/report_text_blocks/freport_intro.phtml'; ?>
             
-            <h4>Specifications</h4>
-            <table>
+            <h4>Contract Specifications</h4>
+            <table class="spec-table-container">
                 <tr>
-                    <th>Overall FF Spec</th><td><?php echo htmlspecialchars($reportData['spec_overall_ff']); ?></td>
-                    <th>Overall FL Spec</th><td><?php echo htmlspecialchars($reportData['spec_overall_fl']); ?></td>
-                </tr>
-                <tr>
-                    <th>Minimum Local FF Spec</th><td><?php echo htmlspecialchars($reportData['spec_min_local_ff']); ?></td>
-                    <th>Minimum Local FL Spec</th><td><?php echo htmlspecialchars($reportData['spec_min_local_fl']); ?></td>
-                </tr>
-                 <tr>
-                    <th>Surface Area</th><td><?php echo htmlspecialchars($reportData['surface_area']); ?></td>
-                    <th>Readings Required / Taken</th><td><?php echo htmlspecialchars($reportData['min_readings_required']); ?> / <?php echo htmlspecialchars($reportData['total_readings_taken']); ?></td>
+                    <td>
+                        <table class="spec-table">
+                            <thead><tr><th class="table-title" colspan="2">Specified FF Value</th></tr></thead>
+                            <tbody>
+                                <tr><td>Overall</td><td><?php echo htmlspecialchars($reportData['spec_overall_ff']); ?></td></tr>
+                                <tr><td>Minimum Local</td><td><?php echo htmlspecialchars($reportData['spec_min_local_ff']); ?></td></tr>
+                            </tbody>
+                        </table>
+                    </td>
+                    <td>
+                        <table class="spec-table">
+                            <thead><tr><th class="table-title" colspan="2">Specified FL Values</th></tr></thead>
+                            <tbody>
+                                <tr><td>Overall</td><td><?php echo htmlspecialchars($reportData['spec_overall_fl']); ?></td></tr>
+                                <tr><td>Minimum Local</td><td><?php echo htmlspecialchars($reportData['spec_min_local_fl']); ?></td></tr>
+                            </tbody>
+                        </table>
+                    </td>
                 </tr>
             </table>
 
+            <table class="spec-table">
+                <thead><tr><th class="table-title" colspan="2">Test Section Detail</th></tr></thead>
+                <tbody>
+                    <tr><td>Surface Area</td><td><?php echo htmlspecialchars($reportData['surface_area']); ?></td></tr>
+                    <tr><td>Minimum Readings Required</td><td><?php echo htmlspecialchars($reportData['min_readings_required']); ?></td></tr>
+                    <tr><td>Total Number of Readings</td><td><?php echo htmlspecialchars($reportData['total_readings_taken']); ?></td></tr>
+                </tbody>
+            </table>
+            
             <h4>Composite F-Numbers</h4>
             <table>
                 <thead><tr><th>Metric</th><th>Overall</th><th>90% Conf.</th><th>SOV P/F</th><th>Min</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
                 <tbody>
                     <?php foreach ($compositeFNumbers as $row): ?>
                     <tr>
-                        <td><?php echo htmlspecialchars($row['metric']); ?></td><td><?php echo htmlspecialchars($row['overall_value']); ?></td><td><?php echo htmlspecialchars($row['conf_interval_90']); ?></td><td><?php echo htmlspecialchars($row['sov_pass_fail']); ?></td>
-                        <td><?php echo htmlspecialchars($row['min_value']); ?></td><td><?php echo htmlspecialchars($row['min_conf_interval_90']); ?></td><td><?php echo htmlspecialchars($row['mlv_pass_fail']); ?></td>
+                        <td><?php echo htmlspecialchars($row['metric']); ?></td>
+                        <td><?php echo htmlspecialchars($row['overall_value']); ?></td>
+                        <td><?php echo format_interval($row['conf_interval_90']); ?></td>
+                        <?php echo format_status_cell($row['sov_pass_fail']); ?>
+                        <td><?php echo htmlspecialchars($row['min_value']); ?></td>
+                        <td><?php echo format_interval($row['min_conf_interval_90']); ?></td>
+                        <?php echo format_status_cell($row['mlv_pass_fail']); ?>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
 
             <?php if ($imageDataUri): ?>
-                <h4>Testing Map</h4>
-                <div class="text-center"><img src="<?php echo $imageDataUri; ?>" class="report-image"></div>
+                <div class="image-container">
+                    <h4>Testing Map</h4>
+                    <div class="text-center"><img src="<?php echo $imageDataUri; ?>" class="report-image"></div>
+                </div>
             <?php endif; ?>
 
             <?php
@@ -166,15 +203,23 @@ try {
             ?>
                 <h4>Sample F-Numbers</h4>
                 <?php foreach ($samplesGrouped as $name => $samples): ?>
-                    <h5><?php echo htmlspecialchars($name); ?></h5>
-                    <table>
-                        <thead><tr><th>Metric</th><th>Overall Value</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
-                        <tbody>
-                            <?php foreach ($samples as $row): ?>
-                            <tr><td><?php echo htmlspecialchars($row['metric']); ?></td><td><?php echo htmlspecialchars($row['overall_value']); ?></td><td><?php echo htmlspecialchars($row['conf_interval_90']); ?></td><td><?php echo htmlspecialchars($row['mlv_pass_fail']); ?></td></tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                    <div class="sample-section">
+                        <h5><?php echo htmlspecialchars(preg_replace('/Sample \(HTML Table (\d+)\)/', 'Sample $1', $name)); ?></h5>
+                        <table class="sample-table">
+                            <colgroup><col class="metric"><col class="value"><col class="conf"><col class="passfail"></colgroup>
+                            <thead><tr><th>Metric</th><th>Overall Value</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($samples as $row): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($row['metric']); ?></td>
+                                    <td><?php echo htmlspecialchars($row['overall_value']); ?></td>
+                                    <td><?php echo format_interval($row['conf_interval_90']); ?></td>
+                                    <?php echo format_status_cell($row['mlv_pass_fail']); ?>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endforeach; ?>
             <?php endif; ?>
         </main>
@@ -183,53 +228,43 @@ try {
     <?php
     $html = ob_get_clean();
 
-    // --- 5. Render, Upload, Update, and Serve PDF ---
+    // --- 5. Render and Output PDF ---
     $options = new Options();
-    $options->set('isRemoteEnabled', true); // Important for loading images
-    $options->set('chroot', dirname(__DIR__)); // Set chroot to project root for security
+    $options->set('isRemoteEnabled', true);
     $dompdf = new Dompdf($options);
     $dompdf->loadHtml($html);
     $dompdf->setPaper('Letter', 'portrait');
     $dompdf->render();
     $pdfOutput = $dompdf->output();
 
-    // The rest of this block can be uncommented when you want to save the PDF to Wasabi
-
-    $pdfFilename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reportData['report_name']) . '_' . date('Ymd') . '.pdf';
-    $pdfObjectKey = "reports/{$reportData['project_id']}/{$pdfFilename}";
+    // MODIFIED: Added 'FF_' prefix to the filename.
+    $pdfFilename = 'FF_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $reportData['report_name']) . '_' . date('Ymd') . '.pdf';
+    
+    // MODIFIED: Changed the file path structure to match the new rules.
+    $projectId = $reportData['project_id'];
+    $taskId = $reportData['task_id'];
+    $pdfObjectKey = "company_{$company_id}/project_{$projectId}/task_{$taskId}/docs/{$pdfFilename}";
 
     if (isset($s3Client)) {
-        $s3Client->putObject([
-            'Bucket'      => $wasabiConfig['bucket'],
-            'Key'         => $pdfObjectKey,
-            'Body'        => $pdfOutput,
-            'ContentType' => 'application/pdf',
-        ]);
-
-        // Update the DB with the path to the generated PDF
+        $s3Client->putObject(['Bucket' => $wasabiConfig['bucket'], 'Key' => $pdfObjectKey, 'Body' => $pdfOutput, 'ContentType' => 'application/pdf']);
         $stmt_update = $link->prepare("UPDATE uploaded_freports SET generated_pdf_key = ? WHERE id = ?");
         $stmt_update->bind_param("si", $pdfObjectKey, $reportId);
         $stmt_update->execute();
     }
-
     
-    // --- 6. Serve the file to the browser ---
-    $pdfFilename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reportData['report_name']) . '.pdf';
-    header_remove(); // Clear any previous headers
+    header_remove();
     header('Access-Control-Expose-Headers: Content-Disposition');
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="' . $pdfFilename . '"');
     header('Content-Length: ' . strlen($pdfOutput));
-
     echo $pdfOutput;
     exit;
 
 } catch (Exception $e) {
-    // Return a JSON error if anything fails
     header_remove();
-    header('Content-Type: application/json');
     http_response_code(500);
-    error_log("PDF Generation Error for Report ID $reportId: " . $e->getMessage());
+    header('Content-Type: application/json');
+    error_log("PDF Generation Error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'An error occurred during PDF generation: ' . $e->getMessage()]);
     exit;
 }

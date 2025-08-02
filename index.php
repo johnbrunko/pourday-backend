@@ -1,5 +1,6 @@
 <?php
 // Initialize the session
+//index.php
 session_start();
 
 // Check if the user is already logged in, if yes then redirect them based on their role
@@ -84,7 +85,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 $_SESSION["role_id"] = $role_id;
                                 $_SESSION["company_id"] = $company_id;
 
-                                // *** NEW: ROLE-BASED REDIRECT LOGIC ***
+                                // *** NEW: GENERATE AND STORE API TOKEN ***
+                                // Generate a secure random token
+                                $api_token = bin2hex(random_bytes(32));
+                                // Store the token in the session to be embedded in the next page
+                                $_SESSION["api_token"] = $api_token;
+                                // Also save this token to the database for this user
+                                $update_sql = "UPDATE users SET api_token = ? WHERE id = ?";
+                                if ($update_stmt = mysqli_prepare($link, $update_sql)) {
+                                    mysqli_stmt_bind_param($update_stmt, "si", $api_token, $id);
+                                    mysqli_stmt_execute($update_stmt);
+                                }
+                                // *** END OF NEW CODE ***
+
                                 // Redirect user based on their role_id
                                 switch ($role_id) {
                                     case 1: // SuperAdmin
@@ -183,7 +196,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
         </div>
     </div>
-
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="node_modules/@trimble-oss/modus-bootstrap/dist/js/modus-bootstrap.bundle.min.js"></script>
     <script src="js/main.js"></script>
 

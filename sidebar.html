@@ -1,9 +1,3 @@
-<!--
-  UPDATED sidebar.html
-  - Removed the non-standard 'has-arrow' class from the Reports link.
-  - Added a <style> block to create a reliable, CSS-only dropdown arrow
-    that will work on all browsers and on any collapsible menu item.
--->
 <style>
   /*
    * This CSS adds a dropdown arrow to sidebar menu items that have a submenu.
@@ -63,8 +57,14 @@
         </li>
         <li class="side-nav-menu-item">
             <a href="projects.php">
-                <i class="modus-icons notranslate">folder_open</i>
+                <i class="modus-icons notranslate">flag</i>
                 <span>Projects</span>
+            </a>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="upload.php">
+                <i class="modus-icons notranslate">folder_open</i>
+                <span>Upload/View Files</span>
             </a>
         </li>
         <li class="side-nav-menu-item">
@@ -80,7 +80,6 @@
             </a>
         </li>
         <li class="side-nav-menu-item">
-            <!-- The 'has-arrow' class has been removed as it's not needed -->
             <a href="#reportsSubMenu" data-bs-toggle="collapse" aria-expanded="false">
                 <i class="modus-icons notranslate">file_text</i>
                 <span>Reports</span>
@@ -89,8 +88,18 @@
                 <li class="side-nav-menu-item"><a href="freport_upload.php">Upload FF/FL</a></li>
                 <li class="side-nav-menu-item"><a href="freport_viewer.php">View/Download FF/FL</a></li>
                 <li class="side-nav-menu-item"><a href="weather_upload.php">Upload Weather Data</a></li>
-                <li class="side-nav-menu-item"><a href="report_images.php">Image Tracker</a></li>
                 <li class="side-nav-menu-item"><a href="photo_selector.php">Photo Selection</a></li>
+                <!-- NEW LINK FOR ACTIVITY REPORT BUILDER -->
+                <li class="side-nav-menu-item"><a href="activity_report_builder.php">Activity Report Builder</a></li>
+            </ul>
+        </li>
+        <li class="side-nav-menu-item">
+            <a href="#settingsSubMenu" data-bs-toggle="collapse" aria-expanded="false">
+                <i class="modus-icons notranslate">settings</i>
+                <span>Settings</span>
+            </a>
+            <ul id="settingsSubMenu" class="side-nav-sub-menu collapse">
+                <li class="side-nav-menu-item"><a href="observation_notes_manager.php">Observation Notes</a></li>
             </ul>
         </li>
     </ul>

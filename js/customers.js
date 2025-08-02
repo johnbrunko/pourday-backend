@@ -38,7 +38,7 @@ $(document).ready(function() {
     // Initialize DataTables
     var customersTable = $('#customersTable').DataTable({
         "processing": true,
-        "serverSide": false,
+        "serverSide": false, // This is set to false, meaning you're loading all data at once or handling server-side manually.
         "ajax": {
             "url": "api/customer_actions.php",
             "type": "GET",
@@ -46,12 +46,17 @@ $(document).ready(function() {
             "dataSrc": "data",
             "error": function(xhr, error, thrown) {
                 console.error("DataTables AJAX Error:", thrown, xhr.responseText);
-                alert('Error loading customer data.');
+                showToast('Error', 'Error loading customer data.', 'danger');
             }
         },
         "columns": [
-            { "data": 0 }, { "data": 1 }, { "data": 2 }, { "data": 3 }, { "data": 4 }, { "data": 5 },
-            { "data": 6, "orderable": false, "searchable": false }
+            { "data": 0 }, // ID
+            { "data": 1 }, // Customer Name
+            // Removed { "data": 2 } (Contact Person)
+            // Removed { "data": 3 } (Contact Phone)
+            { "data": 2 }, // City (previously data:4)
+            { "data": 3 }, // Status (previously data:5)
+            { "data": 4, "orderable": false, "searchable": false } // Actions (previously data:6)
         ],
         "dom": '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>><"row"<"col-sm-12"tr>><"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>'
     });
@@ -69,9 +74,9 @@ $(document).ready(function() {
                     var customer = response.data;
                     $('#editCustomerId').val(customer.id);
                     $('#editCustomerName').val(customer.customer_name);
-                    $('#editContactPerson').val(customer.contact_person);
-                    $('#editContactPhone').val(customer.contact_phone);
-                    $('#editContactEmail').val(customer.contact_email);
+                    // Removed: $('#editContactPerson').val(customer.contact_person);
+                    // Removed: $('#editContactPhone').val(customer.contact_phone);
+                    // Removed: $('#editContactEmail').val(customer.contact_email);
                     $('#editAddressLine1').val(customer.address_line_1);
                     $('#editAddressLine2').val(customer.address_line_2);
                     $('#editCity').val(customer.city);
@@ -115,7 +120,8 @@ $(document).ready(function() {
     $('#customersTable').on('click', '.delete-customer-btn', function() {
         console.log('Delete button clicked in table.'); // DEBUG
         var customerId = $(this).data('id');
-        var customerName = $(this).closest('tr').find('td:eq(1)').text();
+        // Adjust index for customerName since columns shifted
+        var customerName = $(this).closest('tr').find('td:eq(1)').text(); 
         
         $('#deleteConfirmModal .modal-body').text('Are you sure you want to delete "' + customerName + '"? This action cannot be undone.');
         $('#confirmDeleteBtn').data('customerId', customerId);

@@ -19,7 +19,7 @@ if (empty($company_id)) {
 }
 
 // Initialize variables for the form
-$customer_name = $contact_person = $contact_email = $contact_phone = "";
+$customer_name = "";
 $address_line_1 = $address_line_2 = $city = $state_province = $postal_code = "";
 $notes = "";
 $form_errors = [];
@@ -39,9 +39,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_customer'])) {
 
     // --- Retrieve and Sanitize Form Data ---
     $customer_name = trim($_POST['customer_name']);
-    $contact_person = trim($_POST['contact_person']);
-    $contact_email = trim($_POST['contact_email']);
-    $contact_phone = trim($_POST['contact_phone']);
     $address_line_1 = trim($_POST['address_line_1']);
     $address_line_2 = trim($_POST['address_line_2']);
     $city = trim($_POST['city']);
@@ -55,21 +52,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_customer'])) {
     if (empty($city)) { $form_errors['city'] = "City is required."; }
     if (empty($state_province)) { $form_errors['state_province'] = "State/Province is required."; }
     if (empty($postal_code)) { $form_errors['postal_code'] = "Postal/ZIP code is required."; }
-    if (!empty($contact_email) && !filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
-        $form_errors['contact_email'] = "Please enter a valid email address.";
-    }
 
     // If there are no validation errors, insert into the database
     if (empty($form_errors)) {
-        $sql = "INSERT INTO customers (company_id, customer_name, contact_person, contact_email, contact_phone, address_line_1, address_line_2, city, state_province, postal_code, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO customers (company_id, customer_name, address_line_1, address_line_2, city, state_province, postal_code, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
         if ($stmt = mysqli_prepare($link, $sql)) {
-            mysqli_stmt_bind_param($stmt, "issssssssss",
+            mysqli_stmt_bind_param($stmt, "isssssss",
                 $company_id,
                 $customer_name,
-                $contact_person,
-                $contact_email,
-                $contact_phone,
                 $address_line_1,
                 $address_line_2,
                 $city,
@@ -81,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_customer'])) {
             if (mysqli_stmt_execute($stmt)) {
                 $success_message = "Customer '" . htmlspecialchars($customer_name) . "' has been added successfully!";
                 // Clear form fields on success
-                $customer_name = $contact_person = $contact_email = $contact_phone = "";
+                $customer_name = "";
                 $address_line_1 = $address_line_2 = $city = $state_province = $postal_code = "";
                 $notes = "";
                 // Collapse the form again on success
@@ -165,22 +156,7 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
                                         <div class="invalid-feedback"><?php echo $form_errors['customer_name'] ?? ''; ?></div>
                                     </div>
                                 </div>
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="contact_person" class="form-label">Contact Person</label>
-                                        <input type="text" class="form-control" id="contact_person" name="contact_person" value="<?php echo htmlspecialchars($contact_person); ?>">
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="contact_phone" class="form-label">Contact Phone</label>
-                                        <input type="tel" class="form-control" id="contact_phone" name="contact_phone" value="<?php echo htmlspecialchars($contact_phone); ?>">
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="contact_email" class="form-label">Contact Email</label>
-                                    <input type="email" class="form-control <?php echo isset($form_errors['contact_email']) ? 'is-invalid' : ''; ?>" id="contact_email" name="contact_email" value="<?php echo htmlspecialchars($contact_email); ?>">
-                                    <div class="invalid-feedback"><?php echo $form_errors['contact_email'] ?? ''; ?></div>
-                                </div>
-                                  <hr>
+                                                                <hr>
                                 <div class="mb-3">
                                     <label for="address_line_1" class="form-label">Address Line 1</label>
                                     <input type="text" class="form-control <?php echo isset($form_errors['address_line_1']) ? 'is-invalid' : ''; ?>" id="address_line_1" name="address_line_1" value="<?php echo htmlspecialchars($address_line_1); ?>" required>
@@ -225,9 +201,7 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
                                 <tr>
                                     <th>ID</th>
                                     <th>Customer Name</th>
-                                    <th>Contact Person</th>
-                                    <th>Contact Phone</th>
-                                    <th>City</th>
+                                                                        <th>City</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -257,21 +231,7 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
                                 <input type="text" class="form-control" id="editCustomerName" name="customer_name" required>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="editContactPerson" class="form-label">Contact Person</label>
-                                <input type="text" class="form-control" id="editContactPerson" name="contact_person">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="editContactPhone" class="form-label">Contact Phone</label>
-                                <input type="tel" class="form-control" id="editContactPhone" name="contact_phone">
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editContactEmail" class="form-label">Contact Email</label>
-                            <input type="email" class="form-control" id="editContactEmail" name="contact_email">
-                        </div>
-                        <hr>
+                                                <hr>
                         <div class="mb-3">
                             <label for="editAddressLine1" class="form-label">Address Line 1</label>
                             <input type="text" class="form-control" id="editAddressLine1" name="address_line_1" required>

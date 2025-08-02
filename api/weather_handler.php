@@ -45,19 +45,16 @@ function calculateSaturationVaporPressure(float $tempF): ?float {
         30 => 0.168, 40 => 0.248, 50 => 0.363, 60 => 0.522, 70 => 0.739, 80 => 1.033, 90 => 1.422, 100 => 1.933, 110 => 2.590, 120 => 3.427, 130 => 4.475, 140 => 5.767
     ];
     
-    // --- FIX: Use a local variable instead of a constant to avoid re-definition errors ---
     $inhg_to_psi_factor = 0.491154;
 
     $keys = array_keys($vapor_pressure_table_inHg);
     sort($keys);
 
-    // Check for an exact match (avoids floating point issues with round)
     $roundedTemp = (int)round($tempF);
     if (isset($vapor_pressure_table_inHg[$roundedTemp])) {
         return $vapor_pressure_table_inHg[$roundedTemp] * $inhg_to_psi_factor;
     }
 
-    // Find the lower and upper bounds for interpolation
     $lowerTemp = null;
     $upperTemp = null;
     foreach ($keys as $key) {
@@ -73,12 +70,9 @@ function calculateSaturationVaporPressure(float $tempF): ?float {
         return null; // Temperature is outside the table's range
     }
 
-    // Linear interpolation
     $lowerVp = $vapor_pressure_table_inHg[$lowerTemp];
     $upperVp = $vapor_pressure_table_inHg[$upperTemp];
     $es_inHg = $lowerVp + ($tempF - $lowerTemp) * (($upperVp - $lowerVp) / ($upperTemp - $lowerTemp));
-
-    // Convert the final interpolated value from inHg to psi
     $es_psi = $es_inHg * $inhg_to_psi_factor;
 
     return ($es_psi > 0 && is_finite($es_psi)) ? $es_psi : null;
@@ -90,12 +84,15 @@ $apiUrl = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/ser
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $apiUrl);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+// FIXED: Added the CAINFO option to specify the path to the certificate bundle.
+curl_setopt($ch, CURLOPT_CAINFO, dirname(__DIR__) . '/config/cacert.pem');
 $weatherJson = curl_exec($ch);
 $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$error = curl_error($ch); // Get potential cURL error message
 curl_close($ch);
 
 if ($httpcode !== 200 || $weatherJson === false) {
-    $response['message'] = 'Failed to connect to the Weather API. Code: ' . $httpcode;
+    $response['message'] = 'Failed to connect to the Weather API. Code: ' . $httpcode . ' - Error: ' . $error;
     echo json_encode($response);
     exit;
 }
@@ -123,7 +120,6 @@ try {
     $rowCount = 0;
     $savedData = [];
 
-    // Pre-calculate the saturation vapor pressure for the fixed concrete temperature ONCE
     $es_Tc = calculateSaturationVaporPressure($concreteTempF);
 
     foreach ($weatherData['days'] as $day) {
@@ -135,24 +131,18 @@ try {
             if ($recordTimestamp >= $startTimestamp && $recordTimestamp <= $endTimestamp) {
                 $evap_rate = null;
                 
-                $Tc_F = $concreteTempF; // User-provided concrete temp
-                $Ta_F = $hour['temp'] ?? null; // Air temp from API for this hour
+                $Tc_F = $concreteTempF;
+                $Ta_F = $hour['temp'] ?? null;
                 $Rh_percent = $hour['humidity'] ?? null;
                 $V_mph = $hour['windspeed'] ?? null;
 
                 if (is_numeric($Tc_F) && is_numeric($Ta_F) && is_numeric($Rh_percent) && is_numeric($V_mph)) {
                     $Rh_decimal = $Rh_percent / 100;
-                    
-                    // $es_Tc is already calculated outside the loop
                     $es_Ta = calculateSaturationVaporPressure($Ta_F);
                     
                     if ($es_Tc !== null && $es_Ta !== null) {
-                        $ea = $Rh_decimal * $es_Ta; // Actual vapor pressure of the air
-                        
-                        // ACI 305R-10 formula (Menzel)
+                        $ea = $Rh_decimal * $es_Ta;
                         $evap_rate = 0.44 * ($es_Tc - $ea) * (0.253 + 0.096 * $V_mph);
-                        
-                        // Evaporation rate cannot be negative
                         $evap_rate = max(0, $evap_rate);
                     }
                 }

@@ -58,8 +58,25 @@ try {
         $reportId = filter_var($_GET['report_id'], FILTER_VALIDATE_INT);
         $data = [];
 
-        // 1. Get main report details from 'uploaded_freports'
-        $stmt_details = $link->prepare("SELECT * FROM uploaded_freports WHERE id = ? AND company_id = ?");
+        // 1. Get main report details, joining all necessary tables
+        // MODIFIED: Added LEFT JOIN to tasks table and selected the 'scheduled' date.
+        $sql_details = "
+            SELECT 
+                fr.*, 
+                t.scheduled,
+                p.job_name, p.street_1, p.street_2, p.city, p.state, p.zip, 
+                cust.customer_name, 
+                c1.first_name AS contact_first_name, c1.last_name AS contact_last_name, c1.title AS contact_title, 
+                uploader.first_name AS uploader_first_name, uploader.last_name AS uploader_last_name 
+            FROM uploaded_freports fr 
+            JOIN projects p ON fr.project_id = p.id 
+            JOIN customers cust ON p.customer_id = cust.id 
+            LEFT JOIN contacts c1 ON p.contact_id_1 = c1.id 
+            LEFT JOIN users uploader ON fr.user_id = uploader.id 
+            LEFT JOIN tasks t ON fr.task_id = t.id
+            WHERE fr.id = ? AND fr.company_id = ?";
+            
+        $stmt_details = $link->prepare($sql_details);
         $stmt_details->bind_param("ii", $reportId, $company_id);
         $stmt_details->execute();
         $detailsResult = $stmt_details->get_result();
@@ -88,7 +105,8 @@ try {
                     'version'     => 'latest',
                     'region'      => $wasabiConfig['region'],
                     'endpoint'    => $wasabiConfig['endpoint'],
-                    'credentials' => ['key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret']]
+                    'credentials' => ['key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret']],
+                    'http'        => ['verify' => dirname(__DIR__) . '/config/cacert.pem']
                 ]);
                 $command = $s3Client->getCommand('GetObject', [
                     'Bucket' => $wasabiConfig['bucket'],

@@ -68,7 +68,7 @@ $(document).ready(function() {
     // --- Function to Fetch and Display Files ---
     function fetchAndDisplayFiles() {
         const taskId = taskIdSelect.val();
-        const projectId = projectIdSelect.val(); // Pass project_id as well
+        const projectId = projectIdSelect.val();
 
         if (!taskId || !projectId) {
             return;
@@ -106,7 +106,6 @@ $(document).ready(function() {
             return;
         }
 
-        // Render Images
         if (data.images.length > 0) {
             let imageHtml = '<h5><i class="modus-icon modus-icon-image"></i> Images</h5><div class="list-group mb-4">';
             data.images.forEach(file => {
@@ -116,7 +115,6 @@ $(document).ready(function() {
             fileViewerContent.append(imageHtml);
         }
 
-        // Render Documents
         if (data.docs.length > 0) {
             let docHtml = '<h5><i class="modus-icon modus-icon-file-text"></i> Documents</h5><div class="list-group mb-4">';
             data.docs.forEach(file => {
@@ -126,45 +124,59 @@ $(document).ready(function() {
             fileViewerContent.append(docHtml);
         }
 
-        // Render Folder Groups
         if (data.folders.length > 0) {
             let folderHtml = '<h5><i class="modus-icon modus-icon-folder-zip"></i> Lidar Scans (Folders)</h5><div class="list-group mb-4">';
             data.folders.forEach(folder => {
                 folderHtml += `<div class="list-group-item d-flex justify-content-between align-items-center">
-                                 <span><i class="modus-icon modus-icon-folder"></i> ${folder.name}</span>
-                                 <button class="btn btn-sm btn-outline-primary download-folder-btn" data-prefix="${folder.key_prefix}" title="Download folder as a .zip file.">
-                                     Download Folder
-                                 </button>
-                               </div>`;
+                                    <span><i class="modus-icon modus-icon-folder"></i> ${folder.name}</span>
+                                    <button class="btn btn-sm btn-outline-primary download-folder-btn download-lidar-btn" data-prefix="${folder.key_prefix}" title="Download folder. This uses the native desktop client if available.">
+                                        Download Folder
+                                    </button>
+                                   </div>`;
             });
             folderHtml += '</div>';
             fileViewerContent.append(folderHtml);
         }
     }
     
-    // --- Event listener for download button ---
-    fileViewerContent.on('click', '.download-folder-btn', function() {
-        const $button = $(this);
-        const prefix = $button.data('prefix');
-        const originalHtml = $button.html();
-
-        if (!prefix) {
-            alert('Error: Could not find folder path.');
-            return;
-        }
-
-        // Give user feedback that the download is preparing
-        $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Preparing...');
-
-        // Trigger the download by navigating to the zipping script
-        window.location.href = `api/zip_and_download.php?prefix=${encodeURIComponent(prefix)}`;
-
-        // After a delay, revert the button to its original state.
-        // This prevents users from spamming the button while allowing them to re-click if the download fails.
-        setTimeout(() => {
-            $button.prop('disabled', false).html(originalHtml);
-        }, 4000); // 4 seconds
-    });
+    // --- Download Handler ---
+    // (This section remains unchanged)
+    let activeDownloadButton = null;
+    if (window.electronAPI && typeof window.electronAPI.onDownloadProgress === 'function') {
+        window.electronAPI.onDownloadProgress((progress) => {
+            if (activeDownloadButton) {
+                const progressHtml = `<div class="progress" style="height: 100%;"><div class="progress-bar" role="progressbar" style="width: ${progress.percent}%;" aria-valuenow="${progress.percent}" aria-valuemin="0" aria-valuemax="100">${progress.percent}%</div></div>`;
+                activeDownloadButton.html(progressHtml);
+            }
+        });
+        window.electronAPI.onDownloadComplete(() => {
+            if (activeDownloadButton) {
+                const originalHtml = activeDownloadButton.data('original-html');
+                activeDownloadButton.removeClass('btn-outline-primary').addClass('btn-success').html('Download Complete!');
+                setTimeout(() => {
+                    activeDownloadButton.prop('disabled', false).html(originalHtml).removeClass('btn-success').addClass('btn-outline-primary');
+                    activeDownloadButton = null;
+                }, 5000);
+            }
+        });
+        fileViewerContent.on('click', '.download-lidar-btn', function() {
+            activeDownloadButton = $(this);
+            activeDownloadButton.data('original-html', activeDownloadButton.html());
+            activeDownloadButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Preparing...');
+        });
+    } else {
+        fileViewerContent.on('click', '.download-folder-btn', function() {
+            const $button = $(this);
+            const prefix = $button.data('prefix');
+            const originalHtml = $button.html();
+            if (!prefix) { alert('Error: Could not find folder path.'); return; }
+            $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Preparing...');
+            window.location.href = `api/zip_and_download.php?prefix=${encodeURIComponent(prefix)}`;
+            setTimeout(() => {
+                $button.prop('disabled', false).html(originalHtml);
+            }, 4000);
+        });
+    }
 
     // --- Adjust file input for folder selection ---
     uploadTypeRadios.on('change', function() {
@@ -175,9 +187,10 @@ $(document).ready(function() {
         }
     });
 
-    // --- Main Form Submission Logic ---
-    uploadForm.on('submit', async function(e) {
+    // --- Main Upload Logic ---
+    uploadButton.on('click', async function(e) {
         e.preventDefault();
+        
         const files = fileInput[0].files;
         if (files.length === 0) { alert('Please select at least one file or a folder.'); return; }
         if (!projectIdSelect.val() || !taskIdSelect.val()) { alert('Please select both a Project and a Task before uploading.'); return; }
@@ -197,8 +210,12 @@ $(document).ready(function() {
             progressCount.text(`${currentFileNumber} / ${files.length}`);
             progressText.text(`Uploading: ${file.name}`);
             try {
-                const presignedUrl = await getPresignedUrl(file);
-                await uploadToWasabi(presignedUrl, file);
+                // Get both the URL and the final key from the backend
+                const { uploadUrl, fileKey } = await getPresignedUrl(file);
+                // Upload the file to Wasabi
+                await uploadToWasabi(uploadUrl, file);
+                // If successful, save the record to our database
+                await saveFileRecord(file, fileKey);
                 successfulUploads++;
             } catch (error) {
                 console.error('Upload failed for file:', file.name, 'Error:', error);
@@ -222,34 +239,96 @@ $(document).ready(function() {
         }, 3000);
     });
 
-    // --- Helper Functions for Uploading ---
-    function getPresignedUrl(file) {
+    // --- Helper function for getting a pre-signed URL ---
+    async function getPresignedUrl(file) {
+        const formData = new FormData();
+        formData.append('project_id', projectIdSelect.val());
+        formData.append('task_id', taskIdSelect.val());
+        const fileNameForPath = file.webkitRelativePath || file.name;
+        formData.append('filename', fileNameForPath);  
+        formData.append('contentType', file.type || 'application/octet-stream');
+        formData.append('upload_type', $('input[name="upload_type"]:checked').val());
+
+        const ajaxOptions = {
+            url: 'api/get_wasabi_upload_url.php',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            dataType: 'json',
+            headers: {}
+        };
+
+        if (window.electronAPI && typeof window.electronAPI.getToken === 'function') {
+            const apiToken = await window.electronAPI.getToken();
+            if (!apiToken) {
+                throw new Error('Desktop app authorization token is missing.');
+            }
+            ajaxOptions.headers['Authorization'] = `Bearer ${apiToken}`;
+        }
+
         return new Promise((resolve, reject) => {
-            const formData = new FormData();
-            formData.append('project_id', projectIdSelect.val());
-            formData.append('task_id', taskIdSelect.val());
-            const fileNameForPath = file.webkitRelativePath || file.name;
-            formData.append('filename', fileNameForPath);  
-            formData.append('contentType', file.type || 'application/octet-stream');
-            formData.append('upload_type', $('input[name="upload_type"]:checked').val());
-            $.ajax({
-                url: 'api/get_wasabi_upload_url.php', type: 'POST', data: formData, processData: false, contentType: false, dataType: 'json',
-                success: function(response) {
-                    if (response.status === 'success' && response.uploadUrl) { resolve(response.uploadUrl); } 
-                    else { reject(new Error(response.message || 'Server rejected URL request.')); }
-                },
-                error: function(xhr) { reject(new Error('AJAX error getting pre-signed URL: ' + (xhr.responseJSON?.message || 'Server error'))); }
-            });
+            $.ajax(ajaxOptions)
+                .done(response => {
+                    // FIXED: Now expects an object with both properties
+                    if (response.status === 'success' && response.uploadUrl && response.fileKey) {
+                        resolve({ uploadUrl: response.uploadUrl, fileKey: response.fileKey });
+                    } else {
+                        const errorMessage = response.message || 'Server rejected URL request.';
+                        reject(new Error(errorMessage));
+                    }
+                })
+                .fail(xhr => {
+                    const errorMessage = xhr.responseJSON?.message || 'Server error';
+                    reject(new Error('AJAX error getting pre-signed URL: ' + errorMessage));
+                });
         });
     }
+
+    // --- Helper function for uploading to Wasabi ---
     function uploadToWasabi(url, file) {
         return new Promise((resolve, reject) => {
             $.ajax({
-                url: url, type: 'PUT', data: file, processData: false, contentType: file.type || 'application/octet-stream',
+                url: url, 
+                type: 'PUT', 
+                data: file, 
+                processData: false, 
+                contentType: file.type || 'application/octet-stream',
                 success: function() { resolve(); },
                 error: function(xhr) { reject(new Error('Failed to upload file to Wasabi. Status: ' + xhr.statusText)); }
             });
         });
     }
-});
 
+    // --- NEW: Helper function to save the file record to the database ---
+    function saveFileRecord(file, objectKey) {
+        const formData = new FormData();
+        formData.append('project_id', projectIdSelect.val());
+        formData.append('task_id', taskIdSelect.val());
+        formData.append('object_key', objectKey);
+        formData.append('original_filename', file.name);
+        formData.append('unique_filename', file.webkitRelativePath || file.name);
+        formData.append('upload_type', $('input[name="upload_type"]:checked').val());
+
+        return new Promise((resolve, reject) => {
+            $.ajax({
+                url: 'api/save_file_record.php',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        resolve();
+                    } else {
+                        reject(new Error(response.message || 'Failed to save file record.'));
+                    }
+                },
+                error: function(xhr) {
+                    reject(new Error('AJAX error saving file record: ' + (xhr.responseJSON?.message || 'Server error')));
+                }
+            });
+        });
+    }
+});

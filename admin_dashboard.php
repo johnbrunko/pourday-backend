@@ -82,7 +82,7 @@ mysqli_close($link);
     <?php include 'topbar_mobile.html'; ?>
     <?php include 'sidebar.html'; ?>
 
-    <main class="page-content-wrapper">
+    <main class="page-content-wrapper" data-api-token="<?php echo isset($_SESSION['api_token']) ? htmlspecialchars($_SESSION['api_token']) : ''; ?>">
         <div class="container-fluid p-4">
             <h1 class="mb-4">Welcome, <?php echo htmlspecialchars($user_full_name); ?>!</h1>
 

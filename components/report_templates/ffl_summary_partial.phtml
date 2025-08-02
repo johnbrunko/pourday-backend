@@ -1,0 +1,104 @@
+<?php
+// This is a partial template for displaying FF/FL summary data.
+// It's designed to be included in other report templates.
+
+// Helper functions for formatting, in case they are needed.
+if (!function_exists('format_interval')) {
+    function format_interval($value) {
+        if (is_null($value) || trim($value) === '') { return ''; }
+        return htmlspecialchars(preg_replace('/\s+/', ' <=> ', trim($value)));
+    }
+}
+if (!function_exists('format_status_cell')) {
+    function format_status_cell($status) {
+        if (is_null($status) || trim($status) === '') { return '<td>N/A</td>'; }
+        $clean_status = htmlspecialchars(trim($status));
+        $class = strtolower($clean_status);
+        return '<td class="' . $class . '">' . $clean_status . '</td>';
+    }
+}
+?>
+
+<h4>Contract Specifications</h4>
+<table class="spec-table-container">
+    <tr>
+        <td>
+            <table class="spec-table">
+                <thead><tr><th class="table-title" colspan="2">Specified FF Value</th></tr></thead>
+                <tbody>
+                    <tr><td>Overall</td><td><?php echo htmlspecialchars($fflReportData['spec_overall_ff'] ?? 'N/A'); ?></td></tr>
+                    <tr><td>Minimum Local</td><td><?php echo htmlspecialchars($fflReportData['spec_min_local_ff'] ?? 'N/A'); ?></td></tr>
+                </tbody>
+            </table>
+        </td>
+        <td>
+            <table class="spec-table">
+                <thead><tr><th class="table-title" colspan="2">Specified FL Values</th></tr></thead>
+                <tbody>
+                    <tr><td>Overall</td><td><?php echo htmlspecialchars($fflReportData['spec_overall_fl'] ?? 'N/A'); ?></td></tr>
+                    <tr><td>Minimum Local</td><td><?php echo htmlspecialchars($fflReportData['spec_min_local_fl'] ?? 'N/A'); ?></td></tr>
+                </tbody>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<table class="spec-table">
+    <thead><tr><th class="table-title" colspan="2">Test Section Detail</th></tr></thead>
+    <tbody>
+        <tr><td>Surface Area</td><td><?php echo htmlspecialchars($fflReportData['surface_area'] ?? 'N/A'); ?></td></tr>
+        <tr><td>Minimum Readings Required</td><td><?php echo htmlspecialchars($fflReportData['min_readings_required'] ?? 'N/A'); ?></td></tr>
+        <tr><td>Total Number of Readings</td><td><?php echo htmlspecialchars($fflReportData['total_readings_taken'] ?? 'N/A'); ?></td></tr>
+    </tbody>
+</table>
+
+<?php if (!empty($compositeFNumbers)): ?>
+<h4>Composite F-Numbers</h4>
+<table>
+    <thead><tr><th>Metric</th><th>Overall</th><th>90% Conf.</th><th>SOV P/F</th><th>Min</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
+    <tbody>
+        <?php foreach ($compositeFNumbers as $row): ?>
+        <tr>
+            <td><?php echo htmlspecialchars($row['metric']); ?></td>
+            <td><?php echo htmlspecialchars($row['overall_value']); ?></td>
+            <td><?php echo format_interval($row['conf_interval_90']); ?></td>
+            <?php echo format_status_cell($row['sov_pass_fail']); ?>
+            <td><?php echo htmlspecialchars($row['min_value']); ?></td>
+            <td><?php echo format_interval($row['min_conf_interval_90']); ?></td>
+            <?php echo format_status_cell($row['mlv_pass_fail']); ?>
+        </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
+<?php endif; ?>
+
+<?php
+if (!empty($sampleFNumbers)) {
+    $samplesGrouped = [];
+    foreach ($sampleFNumbers as $row) { $samplesGrouped[$row['sample_name']][] = $row; }
+    if (!empty($samplesGrouped)):
+?>
+    <h4>Sample F-Numbers</h4>
+    <?php foreach ($samplesGrouped as $name => $samples): ?>
+        <div class="sample-section">
+            <h5><?php echo htmlspecialchars(preg_replace('/Sample \(HTML Table (\d+)\)/', 'Sample $1', $name)); ?></h5>
+            <table class="sample-table">
+                <colgroup><col class="metric"><col class="value"><col class="conf"><col class="passfail"></colgroup>
+                <thead><tr><th>Metric</th><th>Overall Value</th><th>90% Conf.</th><th>MLV P/F</th></tr></thead>
+                <tbody>
+                    <?php foreach ($samples as $row): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['metric']); ?></td>
+                        <td><?php echo htmlspecialchars($row['overall_value']); ?></td>
+                        <td><?php echo format_interval($row['conf_interval_90']); ?></td>
+                        <?php echo format_status_cell($row['mlv_pass_fail']); ?>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endforeach; ?>
+<?php 
+    endif;
+}
+?>

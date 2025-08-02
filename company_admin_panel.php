@@ -1,17 +1,19 @@
 <?php
-//company_admin_panel.php
-// Initialize the session
+// company_admin_panel.php
 session_start();
 
-// Check if the user is logged in, and if they are a CompanyAdmin (role_id = 2)
 if (!isset($_SESSION["loggedin"]) || $_SESSION["loggedin"] !== true || $_SESSION["role_id"] !== 2) {
     header("location: index.php");
     exit;
 }
 
-// Require necessary files
 require_once 'includes/functions.php';
 require_once 'config/db_connect.php';
+// *** ADDED: Include Composer autoloader for AWS SDK ***
+require_once 'vendor/autoload.php';
+
+use Aws\S3\S3Client;
+use Aws\Exception\AwsException;
 
 $company_id = $_SESSION["company_id"];
 
@@ -20,64 +22,50 @@ if (empty($company_id)) {
     exit;
 }
 
-// Define variables for new user registration form
+// Define variables and check for session messages (unchanged)
 $username = $email = $password = $confirm_password = $first_name = $last_name = $phone_number = $role_selection = "";
 $username_err = $email_err = $password_err = $confirm_password_err = $role_selection_err = "";
 $success_message = "";
 $general_err = "";
 
-// --- ADDED: Check for success/error messages from the session after a redirect ---
 if (isset($_SESSION['form_success_message'])) {
     $success_message = $_SESSION['form_success_message'];
-    unset($_SESSION['form_success_message']); // Clear the message
+    unset($_SESSION['form_success_message']);
 }
 if (isset($_SESSION['form_general_err'])) {
     $general_err = $_SESSION['form_general_err'];
-    unset($_SESSION['form_general_err']); // Clear the message
+    unset($_SESSION['form_general_err']);
 }
 
-// Define variables for Company Settings form
 $company_name_val = $contact_person_name_val = $contact_email_val = $contact_phone_val = $address_val = $city_val = $state_val = $zip_code_val = $country_val = $logo_val = "";
 $company_name_err = $contact_email_err = $general_company_settings_err = "";
 $company_settings_success_message = "";
 
-// --- ADDED: Check for success/error messages for Company Settings from the session after a redirect ---
 if (isset($_SESSION['company_settings_success_message'])) {
     $company_settings_success_message = $_SESSION['company_settings_success_message'];
-    unset($_SESSION['company_settings_success_message']); // Clear the message
+    unset($_SESSION['company_settings_success_message']);
 }
 if (isset($_SESSION['company_settings_general_err'])) {
     $general_company_settings_err = $_SESSION['company_settings_general_err'];
-    unset($_SESSION['company_settings_general_err']); // Clear the message
+    unset($_SESSION['company_settings_general_err']);
 }
 
-// --- Fetch Company Data for pre-populating the form ---
-$company_data = []; // Initialize an empty array
+// Fetch Company Data (unchanged)
+$company_data = [];
 $sql_fetch_company_data = "SELECT company_name, contact_person_name, contact_email, contact_phone, address, city, state, zip_code, country, logo FROM companies WHERE id = ?";
 if ($stmt_fetch = mysqli_prepare($link, $sql_fetch_company_data)) {
     mysqli_stmt_bind_param($stmt_fetch, "i", $param_company_id_fetch);
     $param_company_id_fetch = $company_id;
     if (mysqli_stmt_execute($stmt_fetch)) {
-        mysqli_stmt_bind_result($stmt_fetch,
-            $company_data['company_name'],
-            $company_data['contact_person_name'],
-            $company_data['contact_email'],
-            $company_data['contact_phone'],
-            $company_data['address'],
-            $company_data['city'],
-            $company_data['state'],
-            $company_data['zip_code'],
-            $company_data['country'],
-            $company_data['logo']
-        );
-        mysqli_stmt_fetch($stmt_fetch); // Fetch the result into the bound variables
+        mysqli_stmt_bind_result($stmt_fetch, $company_data['company_name'], $company_data['contact_person_name'], $company_data['contact_email'], $company_data['contact_phone'], $company_data['address'], $company_data['city'], $company_data['state'], $company_data['zip_code'], $company_data['country'], $company_data['logo']);
+        mysqli_stmt_fetch($stmt_fetch);
     } else {
         $general_err = "Oops! Something went wrong while fetching company data.";
     }
     mysqli_stmt_close($stmt_fetch);
 }
 
-// Populate form variables with fetched data (or empty string if not set)
+// Populate form variables (unchanged)
 $company_name_val = $company_data['company_name'] ?? '';
 $contact_person_name_val = $company_data['contact_person_name'] ?? '';
 $contact_email_val = $company_data['contact_email'] ?? '';
@@ -90,17 +78,15 @@ $country_val = $company_data['country'] ?? '';
 $logo_val = $company_data['logo'] ?? '';
 
 
-// --- ADDED: Processing Company Settings form data when form is submitted ---
+// --- MODIFIED: Processing Company Settings form data when form is submitted ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_company_settings'])) {
 
-    // Validate company_name (required)
+    // Validation for text fields (unchanged)
     if (empty(trim($_POST["company_name"]))) {
         $company_name_err = "Please enter a company name.";
     } else {
         $company_name_val = trim($_POST["company_name"]);
     }
-
-    // Validate contact_email (optional, but if provided, must be valid format)
     if (!empty(trim($_POST["contact_email"]))) {
         if (!filter_var(trim($_POST["contact_email"]), FILTER_VALIDATE_EMAIL)) {
             $contact_email_err = "Please enter a valid email format.";
@@ -108,91 +94,115 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_company_setting
             $contact_email_val = trim($_POST["contact_email"]);
         }
     } else {
-        $contact_email_val = ""; // Ensure it's empty if not provided
+        $contact_email_val = "";
+    }
+    $contact_person_name_val = (!empty(trim($_POST["contact_person_name"]))) ? trim($_POST["contact_person_name"]) : null;
+    $contact_phone_val = (!empty(trim($_POST["contact_phone"]))) ? trim($_POST["contact_phone"]) : null;
+    $address_val = (!empty(trim($_POST["address"]))) ? trim($_POST["address"]) : null;
+    $city_val = (!empty(trim($_POST["city"]))) ? trim($_POST["city"]) : null;
+    $state_val = (!empty(trim($_POST["state"]))) ? trim($_POST["state"]) : null;
+    $zip_code_val = (!empty(trim($_POST["zip_code"]))) ? trim($_POST["zip_code"]) : null;
+    $country_val = (!empty(trim($_POST["country"]))) ? trim($_POST["country"]) : null;
+    $logo_val = $company_data['logo'] ?? null;
+
+    // --- MODIFIED: Logo Upload Handling to use Wasabi ---
+    $s3Client = null; // Initialize S3 client variable
+
+    // Function to initialize S3 client if needed
+    function getS3Client() {
+        global $s3Client;
+        if ($s3Client === null) {
+            $wasabiConfig = include('config/wasabi_config.php');
+            $s3Client = new S3Client([
+                'version'     => 'latest',
+                'region'      => $wasabiConfig['region'],
+                'endpoint'    => $wasabiConfig['endpoint'],
+                'credentials' => ['key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret']],
+                'http'        => ['verify' => dirname(__FILE__) . '/config/cacert.pem']
+            ]);
+        }
+        return $s3Client;
     }
 
-    // Assign other nullable fields directly, converting empty strings to NULL if needed
-    $contact_person_name_val = (!empty(trim($_POST["contact_person_name"]))) ? trim($_POST["contact_person_name"]) : null;
-    $contact_phone_val       = (!empty(trim($_POST["contact_phone"]))) ? trim($_POST["contact_phone"]) : null;
-    $address_val             = (!empty(trim($_POST["address"]))) ? trim($_POST["address"]) : null;
-    $city_val                = (!empty(trim($_POST["city"]))) ? trim($_POST["city"]) : null;
-    $state_val               = (!empty(trim($_POST["state"]))) ? trim($_POST["state"]) : null;
-    $zip_code_val            = (!empty(trim($_POST["zip_code"]))) ? trim($_POST["zip_code"]) : null;
-    $country_val             = (!empty(trim($_POST["country"]))) ? trim($_POST["country"]) : null;
-    $logo_val = $company_data['logo'] ?? null; // Start with current logo path from DB
-
-    // --- Logo Upload Handling ---
+    // Handle new logo upload
     if (isset($_FILES["new_logo"]) && $_FILES["new_logo"]["error"] == UPLOAD_ERR_OK) {
-        $target_dir = "uploads/logos/"; // Ensure this directory exists and is writable!
-        $file_name = basename($_FILES["new_logo"]["name"]);
-        $imageFileType = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-        $new_file_name = uniqid('logo_', true) . "." . $imageFileType; // Generate unique name
-        $target_file = $target_dir . $new_file_name;
-
-        // Basic file validation
+        $imageFileType = strtolower(pathinfo(basename($_FILES["new_logo"]["name"]), PATHINFO_EXTENSION));
+        
+        // Basic file validation (unchanged)
         $check = getimagesize($_FILES["new_logo"]["tmp_name"]);
         if ($check === false) {
             $general_company_settings_err = "File is not an image.";
-        } else if ($_FILES["new_logo"]["size"] > 500000) { // Max 500KB
+        } else if ($_FILES["new_logo"]["size"] > 500000) {
             $general_company_settings_err = "Sorry, your file is too large (max 500KB).";
-        } else if ($imageFileType != "jpg" && $imageFileType != "png" && $imageFileType != "jpeg" && $imageFileType != "gif") {
+        } else if (!in_array($imageFileType, ["jpg", "png", "jpeg", "gif"])) {
             $general_company_settings_err = "Sorry, only JPG, JPEG, PNG & GIF files are allowed.";
         }
 
-        // If no upload errors so far, attempt to move the file
+        // If validation passes, upload to Wasabi
         if (empty($general_company_settings_err)) {
-            if (move_uploaded_file($_FILES["new_logo"]["tmp_name"], $target_file)) {
-                // Successfully uploaded new logo, update logo_val to new path
-                $logo_val = $target_file;
+            try {
+                $s3 = getS3Client();
+                $wasabiConfig = include('config/wasabi_config.php');
 
-                // OPTIONAL: Delete old logo if it exists and is different
-                if (!empty($company_data['logo']) && $company_data['logo'] !== $logo_val && file_exists($company_data['logo'])) {
-                    unlink($company_data['logo']); // Delete old file
+                // Define the new absolute path (object key) for Wasabi
+                $new_file_name = uniqid('logo_', true) . "." . $imageFileType;
+                $objectKey = "company_logos/{$company_id}/{$new_file_name}";
+
+                // Upload the file
+                $s3->putObject([
+                    'Bucket' => $wasabiConfig['bucket'],
+                    'Key'    => $objectKey,
+                    'SourceFile' => $_FILES["new_logo"]["tmp_name"],
+                    'ACL'    => 'private' // Or 'public-read' if logos should be public
+                ]);
+                
+                // If upload is successful, delete old logo from Wasabi
+                if (!empty($company_data['logo']) && $company_data['logo'] !== $objectKey) {
+                    try {
+                        $s3->deleteObject([
+                            'Bucket' => $wasabiConfig['bucket'],
+                            'Key'    => $company_data['logo']
+                        ]);
+                    } catch (AwsException $e) {
+                        // Log error but don't block the update
+                        error_log("Could not delete old logo '{$company_data['logo']}' from Wasabi: " . $e->getMessage());
+                    }
                 }
-            } else {
-                $general_company_settings_err = "Sorry, there was an error uploading your file.";
+                
+                // Set the new logo value to the Wasabi object key
+                $logo_val = $objectKey;
+
+            } catch (AwsException $e) {
+                $general_company_settings_err = "Sorry, there was an error uploading your logo to cloud storage. " . $e->getAwsErrorMessage();
+                error_log("Wasabi Upload Error: " . $e->getMessage());
             }
         }
-    } else if (isset($_POST['remove_logo']) && $_POST['remove_logo'] == '1') {
-        // Handle explicit logo removal
-        if (!empty($company_data['logo']) && file_exists($company_data['logo'])) {
-            unlink($company_data['logo']); // Delete existing file
+    } 
+    // Handle logo removal
+    else if (isset($_POST['remove_logo']) && $_POST['remove_logo'] == '1') {
+        if (!empty($company_data['logo'])) {
+            try {
+                $s3 = getS3Client();
+                $wasabiConfig = include('config/wasabi_config.php');
+                $s3->deleteObject([
+                    'Bucket' => $wasabiConfig['bucket'],
+                    'Key'    => $company_data['logo']
+                ]);
+            } catch (AwsException $e) {
+                // Log error but proceed with DB update
+                error_log("Could not delete logo '{$company_data['logo']}' from Wasabi during removal: " . $e->getMessage());
+            }
         }
         $logo_val = null; // Set logo to NULL in DB
     }
 
-
-    // Check input errors before updating in database
+    // Check input errors before updating database (unchanged logic)
     if (empty($company_name_err) && empty($contact_email_err) && empty($general_company_settings_err)) {
 
-        $sql_update_company = "UPDATE companies SET 
-                                company_name = ?, 
-                                contact_person_name = ?, 
-                                contact_email = ?, 
-                                contact_phone = ?, 
-                                address = ?, 
-                                city = ?, 
-                                state = ?, 
-                                zip_code = ?, 
-                                country = ?, 
-                                logo = ? 
-                                WHERE id = ?";
+        $sql_update_company = "UPDATE companies SET company_name = ?, contact_person_name = ?, contact_email = ?, contact_phone = ?, address = ?, city = ?, state = ?, zip_code = ?, country = ?, logo = ? WHERE id = ?";
 
         if ($stmt_update = mysqli_prepare($link, $sql_update_company)) {
-            // "ssssssssssi" -> 10 string params, 1 integer param
-            mysqli_stmt_bind_param($stmt_update, "ssssssssssi",
-                $company_name_val,
-                $contact_person_name_val,
-                $contact_email_val,
-                $contact_phone_val,
-                $address_val,
-                $city_val,
-                $state_val,
-                $zip_code_val,
-                $country_val,
-                $logo_val,
-                $company_id // The WHERE clause parameter
-            );
+            mysqli_stmt_bind_param($stmt_update, "ssssssssssi", $company_name_val, $contact_person_name_val, $contact_email_val, $contact_phone_val, $address_val, $city_val, $state_val, $zip_code_val, $country_val, $logo_val, $company_id);
 
             if (mysqli_stmt_execute($stmt_update)) {
                 $_SESSION['company_settings_success_message'] = "Company settings updated successfully!";
@@ -200,19 +210,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_company_setting
                 exit();
             } else {
                 $_SESSION['company_settings_general_err'] = "Error: Could not update company settings. " . mysqli_error($link);
-                header("location: " . htmlspecialchars($_SERVER["PHP_SELF"])); // Redirect even on error to display message
+                header("location: " . htmlspecialchars($_SERVER["PHP_SELF"]));
                 exit();
             }
             mysqli_stmt_close($stmt_update);
         } else {
             $_SESSION['company_settings_general_err'] = "Error: Could not prepare update statement.";
-            header("location: " . htmlspecialchars($_SERVER["PHP_SELF"])); // Redirect even on error to display message
+            header("location: " . htmlspecialchars($_SERVER["PHP_SELF"]));
             exit();
         }
     }
 }
 
-
+// The rest of the file (user registration, HTML) remains largely the same.
+// ... (rest of the file from your provided code) ...
 // This section determines if the collapse is open or closed on page load
 $is_form_collapsed = "collapse"; 
 $is_aria_expanded = "false";
@@ -320,12 +331,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['register_user'])) {
             $param_role_id = $role_selection;
             $param_is_active = 1;
 
-            // --- MODIFIED: Implemented Post/Redirect/Get pattern ---
             if (mysqli_stmt_execute($stmt)) {
                 
                 $temp_success_message = "User **" . htmlspecialchars($username) . "** registered successfully!";
                 
-                // --- EMAIL SENDING LOGIC ---
                 $email_subject = "Welcome to the PourDay App!";
                 $email_body_html = "
                     <html>
@@ -346,16 +355,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['register_user'])) {
                 if (send_email($email, $email_subject, $email_body_html)) {
                     $temp_success_message .= " A welcome email has been sent.";
                 } else {
-                    // Set an error message if email fails
                     $_SESSION['form_general_err'] = "Note: The user was created, but the welcome email could not be sent. Please check email configurations.";
                 }
                 
-                // 1. Set the final success message in the session
                 $_SESSION['form_success_message'] = $temp_success_message;
-
-                // 2. Redirect to the same page to clear the POST data
                 header("location: " . htmlspecialchars($_SERVER["PHP_SELF"]));
-                exit(); // 3. Stop script execution
+                exit();
 
             } else {
                 $general_err = "Error: Could not register user. " . mysqli_error($link);
@@ -386,23 +391,16 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Company Admin Panel - PourDay App</title>
-
-    <!-- Using CDN for stylesheets for reliability -->
     <link href="https://cdn.jsdelivr.net/npm/@trimble-oss/modus-bootstrap@2.0.12/dist/css/modus-bootstrap.min.css" rel="stylesheet">
-    <!-- FIXED: Added missing Modus Icons stylesheet -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@trimble-oss/modus-icons@1.16.0/dist/modus-solid/fonts/modus-icons.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs5/css/dataTables.bootstrap5.min.css">
-    
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700&display=fallback"/>
-    <link rel="stylesheet" href="css/style.css"> <!-- Your custom styles -->
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <!-- FIXED: Added missing mobile top bar and sidebar -->
     <?php include 'topbar_mobile.html'; ?>
     <?php include 'sidebar.html'; ?>
 
-    <!-- FIXED: Added main content wrapper for correct layout -->
     <main class="page-content-wrapper">
         <div class="container-fluid p-4">
             <div class="card mb-4">
@@ -419,111 +417,110 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
                         <div class="alert alert-success" role="alert"><?php echo $success_message; ?></div>
                     <?php endif; ?>
 
-       <div class="card mb-4">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">Company Info</h4>
-                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#companySettingsCollapse" aria-expanded="<?php echo (!empty($company_settings_success_message) || !empty($general_company_settings_err)) ? 'true' : 'false'; ?>" aria-controls="companySettingsCollapse">
-                    <span class="mi mi-pencil-solid me-2"></span>Edit/View Company Info </button>
-            </div>
-
-            <div class="collapse <?php echo (!empty($company_settings_success_message) || !empty($general_company_settings_err)) ? 'show' : ''; ?>" id="companySettingsCollapse">
-                <div class="card-body">
-                    <?php if (!empty($general_company_settings_err)): ?>
-                        <div class="alert alert-danger" role="alert"><?php echo $general_company_settings_err; ?></div>
-                    <?php endif; ?>
-                    <?php if (!empty($company_settings_success_message)): ?>
-                        <div class="alert alert-success" role="alert"><?php echo $company_settings_success_message; ?></div>
-                    <?php endif; ?>
-
-                    <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="POST" enctype="multipart/form-data">
-                        <input type="hidden" name="update_company_settings" value="1">
-
-                        <div class="mb-3">
-                            <label for="company_name" class="form-label">Company Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control <?php echo (!empty($company_name_err)) ? 'is-invalid' : ''; ?>" id="company_name" name="company_name" value="<?php echo htmlspecialchars($company_name_val); ?>" required>
-                            <div class="invalid-feedback"><?php echo $company_name_err; ?></div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="contact_person_name" class="form-label">Contact Person Name</label>
-                                <input type="text" class="form-control" id="contact_person_name" name="contact_person_name" value="<?php echo htmlspecialchars($contact_person_name_val); ?>">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="contact_email" class="form-label">Contact Email</label>
-                                <input type="email" class="form-control <?php echo (!empty($contact_email_err)) ? 'is-invalid' : ''; ?>" id="contact_email" name="contact_email" value="<?php echo htmlspecialchars($contact_email_val); ?>">
-                                <div class="invalid-feedback"><?php echo $contact_email_err; ?></div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="contact_phone" class="form-label">Contact Phone</label>
-                                <input type="text" class="form-control" id="contact_phone" name="contact_phone" value="<?php echo htmlspecialchars($contact_phone_val); ?>">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Company Logo</label>
-                                <?php if (!empty($logo_val)): ?>
-                                    <div class="mb-2">
-                                        <img src="<?php echo htmlspecialchars($logo_val); ?>" alt="Current Company Logo" style="max-width: 150px; height: auto; border: 1px solid #ddd; padding: 5px; background-color: #fff;">
-                                    </div>
-                                    <div class="form-check mb-2">
-                                        <input class="form-check-input" type="checkbox" id="remove_logo" name="remove_logo" value="1">
-                                        <label class="form-check-label" for="remove_logo">Remove Current Logo</label>
-                                    </div>
-                                <?php else: ?>
-                                    <div class="mb-2 text-muted">No logo currently set.</div>
-                                <?php endif; ?>
-
-                                <label for="new_logo" class="form-label">Upload New Logo (Max 500KB, JPG, PNG, GIF)</label>
-                                <input type="file" class="form-control" id="new_logo" name="new_logo" accept="image/jpeg, image/png, image/gif">
-                                <small class="form-text text-muted">Leave blank to keep current logo, or check "Remove Current Logo" above.</small>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="address" class="form-label">Address</label>
-                            <textarea class="form-control" id="address" name="address" rows="3"><?php echo htmlspecialchars($address_val); ?></textarea>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="city" class="form-label">City</label>
-                                <input type="text" class="form-control" id="city" name="city" value="<?php echo htmlspecialchars($city_val); ?>">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="state" class="form-label">State</label>
-                                <input type="text" class="form-control" id="state" name="state" value="<?php echo htmlspecialchars($state_val); ?>">
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="zip_code" class="form-label">Zip Code</label>
-                                <input type="text" class="form-control" id="zip_code" name="zip_code" value="<?php echo htmlspecialchars($zip_code_val); ?>">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="country" class="form-label">Country</label>
-                                <input type="text" class="form-control" id="country" name="country" value="<?php echo htmlspecialchars($country_val); ?>">
-                            </div>
-                        </div>
-
-                        <div class="d-grid gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary">Save Company Settings</button>
-                        </div>
-                    </form>
+           <div class="card mb-4">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Company Info</h4>
+                    <button class="btn btn-light btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#companySettingsCollapse" aria-expanded="<?php echo (!empty($company_settings_success_message) || !empty($general_company_settings_err)) ? 'true' : 'false'; ?>" aria-controls="companySettingsCollapse">
+                        <span class="mi mi-pencil-solid me-2"></span>Edit/View Company Info </button>
                 </div>
-            </div> </div>
+
+                <div class="collapse <?php echo (!empty($company_settings_success_message) || !empty($general_company_settings_err)) ? 'show' : ''; ?>" id="companySettingsCollapse">
+                    <div class="card-body">
+                        <?php if (!empty($general_company_settings_err)): ?>
+                            <div class="alert alert-danger" role="alert"><?php echo $general_company_settings_err; ?></div>
+                        <?php endif; ?>
+                        <?php if (!empty($company_settings_success_message)): ?>
+                            <div class="alert alert-success" role="alert"><?php echo $company_settings_success_message; ?></div>
+                        <?php endif; ?>
+
+                        <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="POST" enctype="multipart/form-data">
+                            <input type="hidden" name="update_company_settings" value="1">
+
+                            <div class="mb-3">
+                                <label for="company_name" class="form-label">Company Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control <?php echo (!empty($company_name_err)) ? 'is-invalid' : ''; ?>" id="company_name" name="company_name" value="<?php echo htmlspecialchars($company_name_val); ?>" required>
+                                <div class="invalid-feedback"><?php echo $company_name_err; ?></div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="contact_person_name" class="form-label">Contact Person Name</label>
+                                    <input type="text" class="form-control" id="contact_person_name" name="contact_person_name" value="<?php echo htmlspecialchars($contact_person_name_val); ?>">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="contact_email" class="form-label">Contact Email</label>
+                                    <input type="email" class="form-control <?php echo (!empty($contact_email_err)) ? 'is-invalid' : ''; ?>" id="contact_email" name="contact_email" value="<?php echo htmlspecialchars($contact_email_val); ?>">
+                                    <div class="invalid-feedback"><?php echo $contact_email_err; ?></div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="contact_phone" class="form-label">Contact Phone</label>
+                                    <input type="text" class="form-control" id="contact_phone" name="contact_phone" value="<?php echo htmlspecialchars($contact_phone_val); ?>">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Company Logo</label>
+                                    <?php if (!empty($logo_val)): ?>
+                                        <div class="mb-2">
+                                            <!-- This will need a method to get a temporary signed URL from Wasabi to display private images -->
+                                            <p class="text-muted">Logo currently set. Re-upload to change.</p>
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="remove_logo" name="remove_logo" value="1">
+                                            <label class="form-check-label" for="remove_logo">Remove Current Logo</label>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="mb-2 text-muted">No logo currently set.</div>
+                                    <?php endif; ?>
+
+                                    <label for="new_logo" class="form-label">Upload New Logo (Max 500KB, JPG, PNG, GIF)</label>
+                                    <input type="file" class="form-control" id="new_logo" name="new_logo" accept="image/jpeg, image/png, image/gif">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="address" class="form-label">Address</label>
+                                <textarea class="form-control" id="address" name="address" rows="3"><?php echo htmlspecialchars($address_val); ?></textarea>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city" name="city" value="<?php echo htmlspecialchars($city_val); ?>">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" name="state" value="<?php echo htmlspecialchars($state_val); ?>">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="zip_code" class="form-label">Zip Code</label>
+                                    <input type="text" class="form-control" id="zip_code" name="zip_code" value="<?php echo htmlspecialchars($zip_code_val); ?>">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="country" class="form-label">Country</label>
+                                    <input type="text" class="form-control" id="country" name="country" value="<?php echo htmlspecialchars($country_val); ?>">
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2 mt-4">
+                                <button type="submit" class="btn btn-primary">Save Company Settings</button>
+                            </div>
+                        </form>
+                    </div>
+                </div> </div>
 
 
-                    <!-- Button to trigger the collapse -->
+                    <!-- User registration and table sections (unchanged) -->
                     <div class="d-grid gap-2 mb-4">
                         <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#registerUserCollapse" aria-expanded="<?php echo $is_aria_expanded; ?>" aria-controls="registerUserCollapse">
                             Register New User
                         </button>
                     </div>
                     
-                    <!-- Wrapper for the collapsible form -->
                     <div class="<?php echo $is_form_collapsed; ?>" id="registerUserCollapse">
                         <div class="card card-body mb-4" style="border-top: 3px solid #0d6efd;">
                             <h4 class="mt-2">Register New User for <?php echo htmlspecialchars($company_name); ?></h4>
@@ -581,7 +578,6 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
                         </div>
                     </div>
 
-                    <!-- User table section -->
                     <h4 class="mt-5">Users in Your Company (<?php echo htmlspecialchars($company_name); ?>)</h4>
                     <div class="table-responsive">
                         <table id="usersTable" class="table table-hover table-bordered w-100">
@@ -628,7 +624,6 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
     </div>
 
     <!-- Scripts -->
-<!-- Scripts (unchanged) -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.datatables.net/2.0.8/js/dataTables.min.js"></script>
@@ -637,7 +632,6 @@ if ($stmt_company = mysqli_prepare($link, $sql_company)) {
     <script src="js/main.js"></script>
     
     <?php
-    // Close the database connection at the end of the script
     mysqli_close($link);
     ?>
 </body>

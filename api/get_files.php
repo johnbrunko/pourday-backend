@@ -16,11 +16,13 @@ if (!isset($_SESSION["loggedin"]) || $_SESSION["loggedin"] !== true) {
     exit;
 }
 
+// Get the company_id from the session
+$company_id = $_SESSION['company_id'] ?? null;
 $project_id = filter_input(INPUT_GET, 'project_id', FILTER_SANITIZE_NUMBER_INT);
 $task_id = filter_input(INPUT_GET, 'task_id', FILTER_SANITIZE_NUMBER_INT);
 
-if (!$task_id || !$project_id) {
-    echo json_encode(['success' => false, 'message' => 'Project and Task ID are required.']);
+if (!$task_id || !$project_id || !$company_id) {
+    echo json_encode(['success' => false, 'message' => 'Project, Task, and Company ID are required.']);
     exit;
 }
 
@@ -33,10 +35,16 @@ $response = [
     ]
 ];
 
-$sql = "SELECT id, original_filename, unique_filename, object_key, upload_type FROM files WHERE task_id = ? ORDER BY original_filename ASC";
+// The database query is scoped by company_id for security
+$sql = "SELECT f.id, f.original_filename, f.unique_filename, f.object_key, f.upload_type 
+        FROM files f
+        JOIN tasks t ON f.task_id = t.id
+        WHERE f.task_id = ? AND t.company_id = ? 
+        ORDER BY f.original_filename ASC";
+
 $files_to_process = [];
 if ($stmt = mysqli_prepare($link, $sql)) {
-    mysqli_stmt_bind_param($stmt, "i", $task_id);
+    mysqli_stmt_bind_param($stmt, "ii", $task_id, $company_id);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($result)) {
@@ -64,13 +72,15 @@ try {
         'credentials' => [
             'key'    => $wasabiConfig['key'],
             'secret' => $wasabiConfig['secret'],
+        ],
+        'http' => [
+            'verify' => dirname(__DIR__) . '/config/cacert.pem'
         ]
     ]);
 
-    $processed_folders = []; // Array to track unique folders we've processed
+    $processed_folders = [];
 
     foreach ($files_to_process as $file) {
-        // Handle images and docs as individual files
         if ($file['upload_type'] === 'img' || $file['upload_type'] === 'docs') {
             $command = $s3Client->getCommand('GetObject', ['Bucket' => $wasabiConfig['bucket'], 'Key' => $file['object_key']]);
             $presignedUrl = (string)$s3Client->createPresignedRequest($command, '+15 minutes')->getUri();
@@ -82,23 +92,20 @@ try {
                 $response['data']['docs'][] = $file_data;
             }
         } 
-        // Group all 'folders' type files by their parent directory
         elseif ($file['upload_type'] === 'folders') {
             $path_parts = explode('/', $file['unique_filename']);
-            $folder_name = $path_parts[0]; // This is the top-level folder name
+            $folder_name = $path_parts[0];
 
-            // If we haven't seen this folder yet, create a single entry for it
             if (!isset($processed_folders[$folder_name])) {
+                // --- FIXED: The key_prefix now includes the correct "company_" format ---
                 $processed_folders[$folder_name] = [
                     'name' => htmlspecialchars($folder_name),
-                    // This prefix is crucial for a future "download all as zip" feature
-                    'key_prefix' => "{$project_id}/{$task_id}/folders/{$folder_name}"
+                    'key_prefix' => "company_{$company_id}/project_{$project_id}/task_{$task_id}/folders/{$folder_name}"
                 ];
             }
         }
     }
 
-    // Add the unique, processed folders to the final response
     $response['data']['folders'] = array_values($processed_folders);
 
 } catch (Exception $e) {

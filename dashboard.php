@@ -1,6 +1,6 @@
 <?php
 session_start();
-
+//dashboard.php
 // Security check, allowing any logged-in user to see the dashboard.
 if (!isset($_SESSION["loggedin"]) || $_SESSION["loggedin"] !== true) {
     header("location: index.php");
@@ -82,7 +82,7 @@ mysqli_close($link);
     <?php include 'topbar_mobile.html'; ?>
     <?php include 'sidebar.html'; ?>
 
-    <main class="page-content-wrapper">
+    <main class="page-content-wrapper" data-api-token="<?php echo isset($_SESSION['api_token']) ? htmlspecialchars($_SESSION['api_token']) : ''; ?>">
         <div class="container-fluid p-4">
             <h1 class="mb-4">Welcome, <?php echo htmlspecialchars($user_full_name); ?>!</h1>
 

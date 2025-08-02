@@ -82,14 +82,11 @@ if ($company_id) {
     </style>
 </head>
 <body>
-    <!-- FIXED: Added missing mobile top bar and sidebar -->
     <?php include 'topbar_mobile.html'; ?>
     <?php include 'sidebar.html'; ?>
 
-    <!-- FIXED: Added main content wrapper for correct layout -->
     <main class="page-content-wrapper">
         <div class="container-fluid p-4">
-            <!-- Main Content Area (initially hidden) -->
             <div id="mainContent">
                 <h3 id="trackingHeader">Image Tracking for: Task Name</h3>
                 <p id="trackingSubHeader">Project: Project Name</p>
@@ -103,7 +100,6 @@ if ($company_id) {
                     </li>
                 </ul>
                 <div class="tab-content" id="imageTrackerTabsContent">
-                    <!-- Upload Tab -->
                     <div class="tab-pane fade show active" id="upload-tab-pane" role="tabpanel">
                         <div class="card card-body mt-3">
                             <div id="cameraIconContainer" title="Click to upload a photo">
@@ -112,7 +108,6 @@ if ($company_id) {
                             <input type="file" id="photoInput" accept="image/*,.heic,.heif" capture="environment" class="d-none">
                         </div>
                     </div>
-                    <!-- View Tab -->
                     <div class="tab-pane fade" id="view-tab-pane" role="tabpanel">
                         <div class="card card-body mt-3">
                             <h4>Photo Checklist</h4>
@@ -121,8 +116,7 @@ if ($company_id) {
                             <hr>
                             <h4>Uploaded Photos</h4>
                             <div id="photoGallery" class="row g-3">
-                                <!-- Photos will be dynamically inserted here -->
-                            </div>
+                                </div>
                         </div>
                     </div>
                 </div>
@@ -130,12 +124,12 @@ if ($company_id) {
         </div>
     </main>
 
-    <!-- Task Selection Modal -->
     <div class="modal fade" id="taskSelectionModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Select Task</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
@@ -153,13 +147,13 @@ if ($company_id) {
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="startTrackingBtn" disabled>Start Tracking</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Photo Upload Modal -->
     <div class="modal fade" id="photoUploadModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -191,7 +185,6 @@ if ($company_id) {
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- NEW: HEIC conversion library -->
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <script src="js/main.js"></script>
     <script src="js/image_tracker.js"></script>

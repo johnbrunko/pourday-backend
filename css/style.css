@@ -191,3 +191,14 @@
         background-color: var(--side-nav-hover-bg);
         color: var(--side-nav-hover-color);
     }
+/* In your css/style.css file */
+
+/* Hide the special download button by default in all browsers */
+.download-lidar-btn {
+    display: none;
+}
+
+/* ONLY show the button when the page is running inside Electron */
+body.is-electron .download-lidar-btn {
+    display: inline-block; /* Or 'block', depending on your layout */
+}

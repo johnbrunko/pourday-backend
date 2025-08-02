@@ -27,7 +27,7 @@ require_once 'config/db_connect.php'; // Ensure you have your DB connection file
     <?php include 'topbar_mobile.html'; ?>
     <?php include 'sidebar.html'; ?>
 
-    <main class="page-content-wrapper">
+    <main class="page-content-wrapper" data-api-token="<?php echo isset($_SESSION['api_token']) ? htmlspecialchars($_SESSION['api_token']) : ''; ?>">
         <div class="container-fluid mt-5">
             <div class="card mb-4">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">

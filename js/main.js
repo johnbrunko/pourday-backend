@@ -6,7 +6,6 @@
  */
 function initializeGlobalScripts() {
     // 1. Initialize Bootstrap Tooltips
-    // This is now safe because it's only called after we confirm Bootstrap is ready.
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
@@ -30,28 +29,39 @@ function initializeGlobalScripts() {
             setTheme(currentTheme === 'dark' ? 'light' : 'dark');
         });
     }
-
-    // Apply saved theme on initial page load, defaulting to 'light'
     const savedTheme = localStorage.getItem('theme') || 'light';
     setTheme(savedTheme);
 }
 
 /**
  * This function repeatedly checks if the Bootstrap library has been loaded.
- * Once it confirms Bootstrap is ready, it calls our main initialization function.
- * This is a very robust way to prevent script loading "race condition" errors.
+ * This prevents "race condition" errors.
  */
 function waitForBootstrap() {
     if (typeof bootstrap !== 'undefined' && typeof bootstrap.Tooltip === 'function') {
-        // Bootstrap is ready, run our scripts.
         initializeGlobalScripts();
     } else {
-        // If not ready, wait 50 milliseconds and check again.
         setTimeout(waitForBootstrap, 50);
     }
 }
 
 // Start the process only after the document is ready.
 $(document).ready(function() {
+    // --- NEW: DESKTOP APP LOGIC ---
+    // This block is for the Electron app. It checks if the `electronAPI` is available
+    // (meaning it's running in Electron) and sends the API token to the app's backend.
+    if (window.electronAPI && typeof window.electronAPI.sendToken === 'function') {
+        const mainContent = document.querySelector('main[data-api-token]');
+        if (mainContent) {
+            const token = mainContent.getAttribute('data-api-token');
+            if (token) {
+                console.log('Found API token, sending to desktop app backend...');
+                window.electronAPI.sendToken(token);
+            }
+        }
+    }
+    // --- END: DESKTOP APP LOGIC ---
+
+    // Continue with existing initialization
     waitForBootstrap();
 });

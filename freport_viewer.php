@@ -72,7 +72,7 @@ require_once 'config/db_connect.php'; // Ensures user has a valid session.
                 </button>
             </div>
             <div class="card-body">
-                <iframe id="reportDisplayFrame" style="width: 100%; height: 75vh; border: none;"></iframe>
+                <iframe id="reportDisplayFrame" style="width: 100%; height: 75vh; border: 1px solid #ccc; background-color: #fff;"></iframe>
                 <div id="pdfStatus" class="mt-2 text-end"></div>
             </div>
         </div>
@@ -82,6 +82,10 @@ require_once 'config/db_connect.php'; // Ensures user has a valid session.
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="js/main.js"></script>
+<script>
+    // Load the CSS content into a JavaScript variable to be used by the viewer script.
+    const pdfReportCss = <?php echo json_encode(file_get_contents('css/pdf_report.css')); ?>;
+</script>
 <script src="js/freport_viewer.js"></script>
 
 </body>

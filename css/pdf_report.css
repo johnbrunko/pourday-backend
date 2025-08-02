@@ -1,0 +1,139 @@
+/* css/pdf_report.css */
+
+/* --- Page and Font Setup --- */
+@page {
+    margin: 75px 50px;
+}
+body {
+    font-family: Arial, sans-serif;
+    font-size: 10pt;
+    color: #333;
+}
+
+/* --- Header & Footer --- */
+header {
+    position: fixed;
+    top: -65px;
+    left: 0px;
+    right: 0px;
+    height: 60px;
+    border-bottom: 1px solid #ddd;
+}
+footer {
+    position: fixed;
+    bottom: -50px;
+    left: 0px;
+    right: 0px;
+    height: 35px;
+    font-size: 11px;
+}
+.header-table, .footer-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.header-table td, .footer-table td {
+    vertical-align: middle;
+    border: none;
+}
+.header-left, .footer-left { width: 40%; text-align: left; }
+.header-right, .footer-right { width: 40%; text-align: right; }
+.footer-center { width: 20%; text-align: center; }
+.header-left p { font-size: 9pt; margin: 2px 0; }
+.company-logo { max-height: 45px; max-width: 170px; }
+.footer-center .page-number:after { content: "Page " counter(page) " of " counter(pages); }
+
+/* --- Headings --- */
+h1, h2, h3, h4, h5 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #178aa5;
+    margin: 15px 0 5px 0;
+}
+h3 { font-size: 16px; }
+h4 { font-size: 14px; }
+h5 { font-size: 12px; }
+
+.report-main-title {
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 25px;
+}
+
+/* --- Tables --- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+th, td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: left;
+    font-family: Arial, sans-serif;
+    font-size: 7.5pt;
+}
+th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+/* --- Layout & Spacing --- */
+.intro-text {
+    border-left: 5px solid #178aa5;
+    padding-left: 15px;
+    page-break-after: always;
+}
+.intro-text p, .intro-text ul {
+    font-size: 9.8pt;
+    line-height: 1.5;
+}
+.intro-text h3 {
+    font-size: 12pt;
+    color: #000;
+    margin: 10px 0 3px 0;
+}
+
+.spec-table-container {
+    width: 100%;
+    border-spacing: 10px;
+    border-collapse: separate;
+    margin-bottom: 10px;
+}
+.spec-table-container > tbody > tr > td {
+    border: none;
+    padding: 0;
+    vertical-align: top;
+    width: 50%;
+}
+
+.spec-table th.table-title {
+    background-color: #e9e9e9;
+    text-align: center;
+}
+.spec-table td {
+    text-align: center;
+}
+
+.image-container {
+    page-break-after: always;
+    text-align: center;
+}
+.report-image {
+    max-width: 100%;
+    height: auto;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+}
+
+.sample-section {
+    page-break-inside: avoid;
+}
+
+.sample-table col.metric { width: 16%; }
+.sample-table col.value, .sample-table col.conf, .sample-table col.passfail { width: 28%; }
+
+/* --- Formatting --- */
+.pass { color: green; }
+.fail { color: red; }
+td.pass { background-color: #d4edda; color: #155724; }
+td.fail { background-color: #f8d7da; color: #721c24; }
