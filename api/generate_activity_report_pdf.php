@@ -1,4 +1,5 @@
 <?php
+//generate_activity_report_pdf.php
 // Set a higher memory limit and execution time for complex PDF generation.
 ini_set('memory_limit', '512M');
 ini_set('max_execution_time', 300);
@@ -19,8 +20,7 @@ use Aws\S3\S3Client;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
-// --- Helper Functions ---
-
+// --- Helper Functions (No changes needed here) ---
 function save_image_locally($s3Client, $bucket, $key, $tempDir) {
     if (empty($key)) return null;
     try {
@@ -58,6 +58,7 @@ function get_chart_as_local_file($config, $tempDir) {
     error_log("QuickChart API failed with status code: " . $httpcode);
     return null;
 }
+
 
 // --- Main PDF Generation Logic ---
 
@@ -112,20 +113,33 @@ try {
     $s3Client = new S3Client(['version' => 'latest', 'region' => $wasabiConfig['region'], 'endpoint' => $wasabiConfig['endpoint'], 'credentials' => ['key' => $wasabiConfig['key'], 'secret' => $wasabiConfig['secret']], 'http' => ['verify' => dirname(__DIR__) . '/config/cacert.pem']]);
     $bucketName = $wasabiConfig['bucket'];
     
-    // 4. Process Report Entries
+    // 4. Process Ordered Report Entries
     $reportEntries = [];
-    foreach (['observations', 'concerns', 'recommendations'] as $category_plural) {
-        $category_singular = rtrim($category_plural, 's');
-        if (!empty($postData['notes'][$category_plural]['templates'])) {
-            $qMarks = str_repeat('?,', count($postData['notes'][$category_plural]['templates']) - 1) . '?';
-            $stmt = $link->prepare("SELECT text FROM field_report_templates WHERE id IN ($qMarks)");
-            $stmt->bind_param(str_repeat('i', count($postData['notes'][$category_plural]['templates'])), ...$postData['notes'][$category_plural]['templates']);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            while ($row = $result->fetch_assoc()) { $reportEntries[ucfirst($category_singular)][] = $row['text']; }
+    $orderedNotesInput = $postData['ordered_notes'] ?? [];
+    $templateIds = [];
+    foreach ($orderedNotesInput as $note) {
+        if ($note['type'] === 'template' && !empty($note['id'])) {
+            $templateIds[] = (int)$note['id'];
         }
-        if (!empty(trim($postData['notes'][$category_plural]['custom']))) {
-            $reportEntries[ucfirst($category_singular)][] = trim($postData['notes'][$category_plural]['custom']);
+    }
+    
+    $templateTexts = [];
+    if (!empty($templateIds)) {
+        $qMarks = str_repeat('?,', count($templateIds) - 1) . '?';
+        $stmt_templates = $link->prepare("SELECT id, text, category FROM field_report_templates WHERE id IN ($qMarks)");
+        $stmt_templates->bind_param(str_repeat('i', count($templateIds)), ...$templateIds);
+        $stmt_templates->execute();
+        $result = $stmt_templates->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $templateTexts[$row['id']] = ['text' => $row['text'], 'category' => $row['category']];
+        }
+    }
+
+    foreach ($orderedNotesInput as $note) {
+        if ($note['type'] === 'template' && isset($templateTexts[$note['id']])) {
+            $reportEntries[] = ['text' => $templateTexts[$note['id']]['text'], 'category' => $templateTexts[$note['id']]['category']];
+        } elseif ($note['type'] === 'custom' && !empty(trim($note['text']))) {
+            $reportEntries[] = ['text' => trim($note['text']), 'category' => $note['category']];
         }
     }
 
@@ -148,21 +162,35 @@ try {
         }
     }
 
-    // 6. Fetch and Prepare Photos
+    // 6. Fetch and Reorder Photos
     $selectedPhotos = [];
-    if (!empty($postData['photos'])) {
-        $qMarks = str_repeat('?,', count($postData['photos']) - 1) . '?';
-        $stmt_photos = $link->prepare("SELECT f.object_key, f.image_width, f.image_height, tp.comments, at.name as activity_name FROM files f JOIN task_photos tp ON f.id = tp.file_id JOIN activity_types at ON tp.activity_category_id = at.id WHERE f.id IN ($qMarks)");
-        $stmt_photos->bind_param(str_repeat('i', count($postData['photos'])), ...$postData['photos']);
+    $orderedPhotoIds = $postData['photos'] ?? [];
+
+    if (!empty($orderedPhotoIds)) {
+        $qMarks = str_repeat('?,', count($orderedPhotoIds) - 1) . '?';
+        $stmt_photos = $link->prepare("
+            SELECT f.id as file_id, f.object_key, f.image_width, f.image_height, tp.comments, at.name as activity_name 
+            FROM files f 
+            JOIN task_photos tp ON f.id = tp.file_id 
+            LEFT JOIN activity_types at ON tp.activity_category_id = at.id 
+            WHERE f.id IN ($qMarks)
+        ");
+        $stmt_photos->bind_param(str_repeat('i', count($orderedPhotoIds)), ...$orderedPhotoIds);
         $stmt_photos->execute();
         $result = $stmt_photos->get_result();
+        
+        $photoDataMap = [];
         while($row = $result->fetch_assoc()) {
             $row['local_path'] = save_image_locally($s3Client, $bucketName, $row['object_key'], $tempDir);
-            $selectedPhotos[] = $row;
+            $photoDataMap[$row['file_id']] = $row;
+        }
+
+        foreach ($orderedPhotoIds as $id) {
+            if (isset($photoDataMap[$id])) {
+                $selectedPhotos[] = $photoDataMap[$id];
+            }
         }
     }
-
-    // REMOVED: Section for fetching reference documents has been removed.
 
     // 8. Fetch Weather Data and Generate Charts
     $weatherCharts = [];
@@ -172,7 +200,15 @@ try {
     $weatherData = $stmt_weather->get_result()->fetch_all(MYSQLI_ASSOC);
 
     if (!empty($weatherData)) {
-        $labels = array_map(fn($d) => (new DateTime($d['record_datetime']))->format('g:i A'), $weatherData);
+        $labels = [];
+        foreach ($weatherData as $index => $d) {
+            if ($index % 2 === 0) {
+                $labels[] = (new DateTime($d['record_datetime']))->format('g:i A');
+            } else {
+                $labels[] = '';
+            }
+        }
+
         $chartConfigs = [
             'Temperature' => ['data' => array_map(fn($d) => $d['temperature'], $weatherData), 'color' => '#dc3545', 'title' => 'Temperature (°F)'],
             'Humidity' => ['data' => array_map(fn($d) => $d['humidity'], $weatherData), 'color' => '#0d6efd', 'title' => 'Humidity (%)'],
@@ -180,60 +216,37 @@ try {
             'Evaporation' => ['data' => array_map(fn($d) => $d['evap_rate'], $weatherData), 'color' => '#6f42c1', 'title' => 'Evap. Rate (lb/ft²/h)'],
         ];
         foreach($chartConfigs as $key => $c) {
-            $config = [
-                'type' => 'line',
-                'data' => [
-                    'labels' => $labels,
-                    'datasets' => [
-                        [
-                            'label' => $key,
-                            'data' => $c['data'],
-                            'borderColor' => $c['color'],
-                            'backgroundColor' => 'transparent', // Changed to transparent
-                            'fill' => false, // Set to false to remove fill
-                            'tension' => 0.1
-                        ]
-                    ]
-                ],
-                'options' => [
-                    'title' => [
-                        'display' => true,
-                        'text' => $c['title']
+            // --- MODIFIED: Chart size reduced and padding added ---
+            $config = [ 
+                'width' => 450,
+                'height' => 260,
+                'backgroundColor' => '#ffffff',
+                'type' => 'line', 
+                'data' => [ 
+                    'labels' => $labels, 
+                    'datasets' => [ 
+                        [ 
+                            'label' => $key, 
+                            'data' => $c['data'], 
+                            'borderColor' => $c['color'], 
+                            'backgroundColor' => 'transparent', 
+                            'fill' => false, 
+                            'tension' => 0.1 
+                        ] 
+                    ] 
+                ], 
+                'options' => [ 
+                    'layout' => [
+                        'padding' => 10
                     ],
-                    'legend' => [
-                        'display' => false
-                    ],
-                    'devicePixelRatio' => 2,
+                    'title' => [ 'display' => true, 'text' => $c['title'] ], 
+                    'legend' => [ 'display' => false ], 
+                    'devicePixelRatio' => 2, 
                     'scales' => [ 
-                        'y' => [
-                            'beginAtZero' => false,
-                            'title' => [
-                                'display' => true,
-                                'text' => $c['title'] 
-                            ],
-                            'grid' => [ // Reverted grid color/width back to default if preferred
-                                'color' => 'rgba(0, 0, 0, 0.1)', // Typical Chart.js default light grey
-                                'lineWidth' => 1
-                            ],
-                            'ticks' => [ 
-                                'color' => '#666' // Typical Chart.js default tick color
-                            ]
-                        ],
-                        'x' => [
-                            'title' => [
-                                'display' => true,
-                                'text' => 'Time'
-                            ],
-                            'grid' => [ // Reverted grid color/width back to default if preferred
-                                'color' => 'rgba(0, 0, 0, 0.1)', 
-                                'lineWidth' => 1
-                            ],
-                            'ticks' => [ 
-                                'color' => '#666'
-                            ]
-                        ]
-                    ]
-                ]
+                        'y' => [ 'beginAtZero' => false, 'title' => [ 'display' => true, 'text' => $c['title'] ], 'grid' => [ 'color' => 'rgba(0, 0, 0, 0.1)', 'lineWidth' => 1 ], 'ticks' => [ 'color' => '#666' ] ], 
+                        'x' => [ 'title' => [ 'display' => true, 'text' => 'Time' ], 'grid' => [ 'color' => 'rgba(0, 0, 0, 0.1)', 'lineWidth' => 1 ], 'ticks' => [ 'color' => '#666' ] ] 
+                    ] 
+                ] 
             ];
             $weatherCharts[$key] = get_chart_as_local_file($config, $tempDir);
         }
@@ -281,7 +294,7 @@ try {
     header('Access-Control-Expose-Headers: Content-Disposition');
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="' . $pdfFilename . '"');
-    header('Content-Length: ' . strlen($pdfOutput));
+    header('Content-Length' . strlen($pdfOutput));
     echo $pdfOutput;
     exit;
 

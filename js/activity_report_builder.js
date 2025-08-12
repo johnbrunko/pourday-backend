@@ -5,9 +5,32 @@ $(document).ready(function() {
     const reportBuilderSections = $('#reportBuilderSections');
     const generateReportBtn = $('#generateReportBtn');
     const generationStatus = $('#generation-status');
+    const notesAccordion = $('#notesAccordion');
+    const selectedObservationsList = $('#selected-observations-list');
+    const selectedConcernsList = $('#selected-concerns-list');
+    const selectedRecommendationsList = $('#selected-recommendations-list');
+    const reorderablePhotosList = $('#reorderable-photos-list');
+
+    // --- Initialize SortableJS for Notes ---
+    ['selected-observations-list', 'selected-concerns-list', 'selected-recommendations-list'].forEach(id => {
+        new Sortable(document.getElementById(id), {
+            group: id,
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'sortable-ghost',
+        });
+    });
+
+    // --- Initialize SortableJS for Photos ---
+    if (reorderablePhotosList.length) {
+        new Sortable(reorderablePhotosList[0], {
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'sortable-ghost',
+        });
+    }
 
     // --- Data Loading Functions ---
-
     function loadProjects() {
         projectSelect.html('<option value="">Loading Projects...</option>');
         $.getJSON('api/freport_actions.php?action=get_projects')
@@ -20,9 +43,6 @@ $(document).ready(function() {
                 } else {
                     projectSelect.append('<option value="">No ongoing projects found</option>');
                 }
-            })
-            .fail(function() {
-                projectSelect.empty().append('<option value="">Error loading projects</option>');
             });
     }
 
@@ -38,81 +58,138 @@ $(document).ready(function() {
                 } else {
                     taskSelect.html('<option value="">No tasks found for this project</option>');
                 }
-            })
-            .fail(function() {
-                taskSelect.html('<option value="">Error loading tasks</option>');
             });
     }
 
     function loadBuilderData(taskId) {
         reportBuilderSections.show();
-        loadNoteTemplates();
+        loadAllNoteTemplates();
         loadTaskPhotos(taskId);
     }
-
-    function loadNoteTemplates() {
-        ['Observation', 'Concern', 'Recommendation'].forEach(category => {
-            const container = $(`#${category.toLowerCase()}s-body`);
-            container.html('<p>Loading templates...</p>');
-
-            $.getJSON(`api/activity_report_actions.php?action=get_note_templates&category=${category}`)
-                .done(function(response) {
-                    let contentHtml = '<div class="list-group mb-3">';
-                    if (response.success && response.data.length > 0) {
-                        response.data.forEach(template => {
-                            contentHtml += `
-                                <label class="list-group-item">
-                                    <input class="form-check-input me-2" type="checkbox" name="note_${category.toLowerCase()}" value="${template.id}">
-                                    ${$('<p>').text(template.text).html()}
-                                </label>
-                            `;
-                        });
-                    } else {
-                        contentHtml += '<p class="text-muted">No templates found.</p>';
-                    }
-                    contentHtml += '</div>';
-                    contentHtml += `
-                        <h6>Add Custom ${category}</h6>
-                        <textarea class="form-control" name="custom_note_${category.toLowerCase()}" rows="3" placeholder="Type a custom ${category.toLowerCase()}..."></textarea>
-                    `;
-                    container.html(contentHtml);
-                })
-                .fail(function() {
-                    container.html(`<p class="text-danger">Error loading ${category} templates.</p>`);
-                });
-        });
+    
+    function addNoteToSelectedList(id, text, category, type) {
+        const targetList = getListForCategory(category);
+        if (!targetList || targetList.find(`[data-id="${id}"]`).length > 0) {
+            return; 
+        }
+        const noteHtml = `
+            <div class="selected-note-item" data-id="${id}" data-type="${type}" data-category="${category}">
+                <i class="modus-icons notranslate drag-handle">drag_handle</i>
+                <span class="flex-grow-1">${$('<p>').text(text).html()}</span>
+            </div>
+        `;
+        targetList.append(noteHtml);
     }
     
+    function removeNoteFromSelectedList(id) {
+        [selectedObservationsList, selectedConcernsList, selectedRecommendationsList].forEach(list => {
+            list.find(`[data-id="${id}"]`).remove();
+        });
+    }
+
+    function getListForCategory(category) {
+        if (category === 'Observation') return selectedObservationsList;
+        if (category === 'Concern') return selectedConcernsList;
+        if (category === 'Recommendation') return selectedRecommendationsList;
+        return null;
+    }
+
+    function loadAllNoteTemplates() {
+        notesAccordion.html('<p class="text-muted p-3">Loading note templates...</p>');
+        $.getJSON(`api/activity_report_actions.php?action=get_all_note_templates`)
+            .done(function(response) {
+                notesAccordion.empty();
+                if (response.success) {
+                    const categories = ['Observation', 'Concern', 'Recommendation'];
+                    categories.forEach((category, index) => {
+                        const templates = response.data[category] || [];
+                        const isExpanded = index === 0 ? 'true' : 'false';
+                        const showClass = index === 0 ? 'show' : '';
+                        
+                        let accordionItemHtml = `
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button ${!isExpanded ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${category}" aria-expanded="${isExpanded}">
+                                        ${category}s
+                                    </button>
+                                </h2>
+                                <div id="collapse${category}" class="accordion-collapse collapse ${showClass}" data-bs-parent="#notesAccordion">
+                                    <div class="accordion-body">
+                                        <div class="list-group mb-3">`;
+                        
+                        if (templates.length > 0) {
+                            templates.forEach(template => {
+                                accordionItemHtml += `
+                                    <label class="list-group-item">
+                                        <input class="form-check-input me-2 note-template-checkbox" type="checkbox" data-id="${template.id}" data-text="${$('<p>').text(template.text).html()}" data-category="${category}">
+                                        ${$('<p>').text(template.text).html()}
+                                    </label>`;
+                            });
+                        } else {
+                            accordionItemHtml += '<p class="text-muted">No templates found.</p>';
+                        }
+
+                        accordionItemHtml += `
+                                        </div>
+                                        <h6>Add Custom ${category}</h6>
+                                        <div class="input-group">
+                                            <textarea class="form-control custom-note-textarea" data-category="${category}" rows="3" placeholder="Type a custom ${category.toLowerCase()}..."></textarea>
+                                            <button class="btn btn-outline-secondary add-custom-note-btn" type="button">Add</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>`;
+                        notesAccordion.append(accordionItemHtml);
+                    });
+                }
+            });
+    }
+
     function loadTaskPhotos(taskId) {
-        const container = $('#photo-selection-container');
-        container.html('<p>Loading photos...</p>');
+        reorderablePhotosList.html('<p class="text-muted p-3">Loading photos...</p>');
         $.getJSON(`api/activity_report_actions.php?action=get_task_photos&task_id=${taskId}`)
             .done(function(response) {
-                container.empty();
+                reorderablePhotosList.empty();
                 if (response.success && response.data.length > 0) {
                     response.data.forEach(photo => {
-                        const photoHtml = `
-                            <div class="col-auto">
-                                <label class="position-relative">
-                                    <input class="form-check-input position-absolute top-0 start-0 m-1" type="checkbox" name="selected_photos" value="${photo.file_id}">
-                                    <img src="${photo.thumbnail_url}" class="photo-thumbnail" alt="${photo.comments || 'Task photo'}">
-                                </label>
+                        let captionHtml = `<strong>${$('<div>').text(photo.activity_name || 'Uncategorized').html()}</strong>`;
+                        
+                        // --- MODIFIED: This check now also ensures the comment is not "0" ---
+                        if (photo.comments && photo.comments.trim() !== '' && photo.comments.trim() !== '0') {
+                            captionHtml += `: ${$('<div>').text(photo.comments).html()}`;
+                        }
+
+                        const photoItem = `
+                            <div class="photo-reorder-item" data-id="${photo.file_id}">
+                                <i class="modus-icons notranslate drag-handle">drag_handle</i>
+                                <img src="${photo.thumbnail_url}" class="photo-thumbnail-reorder" alt="${photo.activity_name || 'Task photo'}">
+                                <span class="photo-caption-reorder"></span>
                             </div>
                         `;
-                        container.append(photoHtml);
+                        
+                        const photoElement = $(photoItem);
+                        photoElement.find('.photo-caption-reorder').html(captionHtml);
+                        reorderablePhotosList.append(photoElement);
                     });
                 } else {
-                    container.html('<p class="text-muted">No photos found for this task.</p>');
+                    reorderablePhotosList.html('<p class="text-muted p-3">No photos found for this task.</p>');
                 }
             });
     }
 
     // --- Event Handlers ---
+    function clearSelectedNotes() {
+        selectedObservationsList.empty();
+        selectedConcernsList.empty();
+        selectedRecommendationsList.empty();
+    }
 
     projectSelect.on('change', function() {
         const projectId = $(this).val();
         reportBuilderSections.hide();
         taskSelect.html('<option value="">-- Select a project first --</option>').prop('disabled', true);
+        clearSelectedNotes();
+        reorderablePhotosList.empty();
         if (projectId) {
             loadTasksForProject(projectId);
         }
@@ -120,10 +197,38 @@ $(document).ready(function() {
 
     taskSelect.on('change', function() {
         const taskId = $(this).val();
+        clearSelectedNotes();
+        reorderablePhotosList.empty();
         if (taskId) {
             loadBuilderData(taskId);
         } else {
             reportBuilderSections.hide();
+        }
+    });
+    
+    notesAccordion.on('change', '.note-template-checkbox', function() {
+        const checkbox = $(this);
+        const id = checkbox.data('id');
+        const text = checkbox.data('text');
+        const category = checkbox.data('category');
+
+        if (checkbox.is(':checked')) {
+            addNoteToSelectedList(id, text, category, 'template');
+        } else {
+            removeNoteFromSelectedList(id);
+        }
+    });
+
+    notesAccordion.on('click', '.add-custom-note-btn', function() {
+        const button = $(this);
+        const textarea = button.siblings('textarea.custom-note-textarea');
+        const text = textarea.val().trim();
+        const category = textarea.data('category');
+
+        if (text) {
+            const customId = 'custom_' + new Date().getTime(); 
+            addNoteToSelectedList(customId, text, category, 'custom');
+            textarea.val('');
         }
     });
 
@@ -133,24 +238,29 @@ $(document).ready(function() {
             alert('Please select a task first.');
             return;
         }
+        
+        const orderedNotes = [];
+        [selectedObservationsList, selectedConcernsList, selectedRecommendationsList].forEach(list => {
+            list.find('.selected-note-item').each(function() {
+                const item = $(this);
+                orderedNotes.push({
+                    type: item.data('type'),
+                    category: item.data('category'),
+                    id: item.data('type') === 'template' ? item.data('id') : null,
+                    text: item.data('type') === 'custom' ? item.find('span').text() : null
+                });
+            });
+        });
+
+        const orderedPhotoIds = [];
+        reorderablePhotosList.find('.photo-reorder-item').each(function() {
+            orderedPhotoIds.push($(this).data('id'));
+        });
 
         const reportData = {
             task_id: taskId,
-            notes: {
-                observations: {
-                    templates: $('input[name="note_observation"]:checked').map((_, el) => $(el).val()).get(),
-                    custom: $('textarea[name="custom_note_observation"]').val()
-                },
-                concerns: {
-                    templates: $('input[name="note_concern"]:checked').map((_, el) => $(el).val()).get(),
-                    custom: $('textarea[name="custom_note_concern"]').val()
-                },
-                recommendations: {
-                    templates: $('input[name="note_recommendation"]:checked').map((_, el) => $(el).val()).get(),
-                    custom: $('textarea[name="custom_note_recommendation"]').val()
-                }
-            },
-            photos: $('input[name="selected_photos"]:checked').map((_, el) => $(el).val()).get(),
+            ordered_notes: orderedNotes,
+            photos: orderedPhotoIds,
         };
 
         $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Generating...');
@@ -171,7 +281,6 @@ $(document).ready(function() {
                     const matches = /filename="?([^"]+)"?/.exec(disposition);
                     if (matches && matches[1]) filename = matches[1];
                 }
-
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.style.display = 'none';
@@ -183,7 +292,7 @@ $(document).ready(function() {
                 a.remove();
                 generationStatus.html('<span class="text-success">Report downloaded successfully!</span>');
             } else {
-                generationStatus.html('<span class="text-danger">Error: Invalid file received from server.</span>');
+                 generationStatus.html('<span class="text-danger">Error: Invalid file received from server.</span>');
             }
         })
         .fail(function() {

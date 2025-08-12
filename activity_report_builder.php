@@ -1,5 +1,6 @@
 <?php
 session_start();
+//activity_report_builder.php
 // Allow admins and project managers to access this page
 if (!isset($_SESSION["loggedin"]) || $_SESSION["loggedin"] !== true || !in_array($_SESSION["role_id"], [1, 2, 3])) {
     header("location: index.php");
@@ -23,7 +24,72 @@ require_once 'config/db_connect.php';
         /* Custom styles for the builder */
         .builder-step { margin-bottom: 1.5rem; }
         .list-group-item { padding: 0.5rem 1rem; }
-        .photo-thumbnail { width: 100px; height: 100px; object-fit: cover; border-radius: 0.25rem; }
+        
+        /* Styles for the new reordering feature */
+        .selected-notes-container {
+            border: 1px dashed var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 1rem;
+        }
+        .sortable-list { min-height: 50px; }
+
+        .selected-note-item { 
+            border: 1px solid var(--bs-border-color-translucent);
+            padding: 0.5rem 1rem; 
+            border-radius: 0.25rem; 
+            margin-bottom: 0.5rem; 
+            cursor: grab; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            border-left: 4px solid var(--bs-success);
+        }
+        .selected-note-item:active, .photo-reorder-item:active { cursor: grabbing; }
+        .sortable-ghost { opacity: 0.4; background-color: var(--bs-primary); }
+        .drag-handle { margin-right: 0.75rem; color: var(--bs-gray-400); }
+        .category-header {
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--bs-gray-600);
+            color: var(--bs-gray-300);
+        }
+        .category-header:first-of-type {
+            margin-top: 0;
+        }
+
+        /* --- MODIFIED: Styles for two-column photo layout --- */
+        #reorderable-photos-list {
+            border: 1px dashed var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            min-height: 100px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+        .photo-reorder-item {
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--bs-border-color-translucent);
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+            cursor: grab;
+            width: calc(50% - 0.5rem); /* Two columns with a gap */
+            border-left: 4px solid var(--bs-success);
+        }
+        .photo-thumbnail-reorder {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 0.25rem;
+            margin-right: 1rem;
+        }
+        .photo-caption-reorder {
+            font-size: 0.9rem;
+            flex-grow: 1; /* Allow caption to take remaining space */
+        }
     </style>
 </head>
 <body>
@@ -56,62 +122,43 @@ require_once 'config/db_connect.php';
 
                     <!-- Builder sections - initially hidden -->
                     <div id="reportBuilderSections" style="display: none;">
-                        <!-- Step 2: Observations, Concerns, Recommendations -->
+                        
+                        <!-- Step 2: Add and Order Notes -->
                         <div class="builder-step" id="step2">
-                            <h4>Step 2: Add Notes</h4>
-                            <div class="accordion" id="notesAccordion">
-                                <!-- Observations -->
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingObservations">
-                                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseObservations" aria-expanded="true" aria-controls="collapseObservations">
-                                            Observations
-                                        </button>
-                                    </h2>
-                                    <div id="collapseObservations" class="accordion-collapse collapse show" aria-labelledby="headingObservations">
-                                        <div class="accordion-body" id="observations-body">
-                                            <!-- Templates and custom entries will be loaded here -->
-                                        </div>
+                            <h4>Step 2: Add and Order Notes</h4>
+                            <div class="row">
+                                <!-- Left Column: Available Notes -->
+                                <div class="col-lg-6">
+                                    <h5 class="mb-3">Available Notes</h5>
+                                    <div class="accordion" id="notesAccordion">
+                                        <!-- Accordion Items for Observations, Concerns, Recommendations will be loaded here -->
                                     </div>
                                 </div>
-                                <!-- Concerns -->
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingConcerns">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseConcerns" aria-expanded="false" aria-controls="collapseConcerns">
-                                            Concerns
-                                        </button>
-                                    </h2>
-                                    <div id="collapseConcerns" class="accordion-collapse collapse" aria-labelledby="headingConcerns">
-                                        <div class="accordion-body" id="concerns-body">
-                                            <!-- Templates and custom entries will be loaded here -->
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Recommendations -->
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingRecommendations">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRecommendations" aria-expanded="false" aria-controls="collapseRecommendations">
-                                            Recommendations
-                                        </button>
-                                    </h2>
-                                    <div id="collapseRecommendations" class="accordion-collapse collapse" aria-labelledby="headingRecommendations">
-                                        <div class="accordion-body" id="recommendations-body">
-                                            <!-- Templates and custom entries will be loaded here -->
-                                        </div>
+                                <!-- Right Column: Selected Notes Staging Area -->
+                                <div class="col-lg-6">
+                                    <h5 class="mb-3">Selected Notes (Drag to Reorder within a category)</h5>
+                                    <div class="selected-notes-container">
+                                        <h6 class="category-header">Observations</h6>
+                                        <div id="selected-observations-list" class="sortable-list"></div>
+                                        
+                                        <h6 class="category-header">Concerns</h6>
+                                        <div id="selected-concerns-list" class="sortable-list"></div>
+
+                                        <h6 class="category-header">Recommendations</h6>
+                                        <div id="selected-recommendations-list" class="sortable-list"></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Step 3: Attach Photos -->
+                        <!-- Step 3: Reorder Photos -->
                         <div class="builder-step" id="step3">
-                            <h4>Step 3: Attach Photos</h4>
-                            <div id="photo-selection-container" class="row g-2">
-                                <!-- Photos will be loaded here -->
-                                <p class="text-muted">Select a task to see available photos.</p>
+                            <h4>Step 3: Reorder Photos</h4>
+                            <div id="reorderable-photos-list">
+                                <!-- Photos will be loaded here by JS -->
+                                <p class="text-muted p-3" style="width: 100%;">Select a task to see available photos.</p>
                             </div>
                         </div>
-
-                        <!-- REMOVED: Step for attaching documents has been removed. -->
 
                         <!-- Step 4: Generate Report -->
                         <div class="builder-step mt-4" id="step4">
@@ -129,6 +176,7 @@ require_once 'config/db_connect.php';
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/sortable.min.js"></script>
     <script src="js/main.js"></script>
     <script src="js/activity_report_builder.js"></script>
 </body>

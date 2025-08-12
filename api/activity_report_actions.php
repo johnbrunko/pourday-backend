@@ -1,7 +1,7 @@
 <?php
 session_start();
 header('Content-Type: application/json');
-
+// api/activity_report_actions.php
 // --- Security and Initialization ---
 if (!isset($_SESSION["loggedin"]) || $_SESSION["loggedin"] !== true || !in_array($_SESSION["role_id"], [1, 2, 3])) {
     http_response_code(403);
@@ -57,18 +57,25 @@ try {
             $response = ['success' => true, 'data' => $data];
             break;
 
-        case 'get_note_templates':
-            // FIXED: Replaced deprecated FILTER_SANITIZE_STRING
-            $category = trim($_GET['category'] ?? '');
-            if (!in_array($category, ['Observation', 'Concern', 'Recommendation'])) {
-                throw new Exception("Invalid category specified.");
-            }
-            $stmt = $link->prepare("SELECT id, text FROM field_report_templates WHERE company_id = ? AND category = ? AND is_active = 1 ORDER BY text ASC");
-            $stmt->bind_param("is", $company_id, $category);
+        case 'get_all_note_templates':
+            $stmt = $link->prepare("SELECT id, text, category FROM field_report_templates WHERE company_id = ? AND is_active = 1 ORDER BY category, text ASC");
+            $stmt->bind_param("i", $company_id);
             $stmt->execute();
             $result = $stmt->get_result();
-            $data = $result->fetch_all(MYSQLI_ASSOC);
-            $response = ['success' => true, 'data' => $data];
+            
+            $grouped_templates = [
+                'Observation' => [],
+                'Concern' => [],
+                'Recommendation' => []
+            ];
+
+            while ($row = $result->fetch_assoc()) {
+                if (array_key_exists($row['category'], $grouped_templates)) {
+                    $grouped_templates[$row['category']][] = ['id' => $row['id'], 'text' => $row['text']];
+                }
+            }
+            
+            $response = ['success' => true, 'data' => $grouped_templates];
             break;
 
         case 'get_task_photos':
@@ -76,10 +83,12 @@ try {
             $task_id = filter_input(INPUT_GET, 'task_id', FILTER_VALIDATE_INT);
             if (!$task_id) throw new Exception("Invalid Task ID.");
 
+            // MODIFIED: Changed JOIN to LEFT JOIN to include photos even if they have no category
             $stmt = $link->prepare("
-                SELECT f.id as file_id, f.object_key, tp.comments
+                SELECT f.id as file_id, f.object_key, tp.comments, at.name as activity_name
                 FROM task_photos tp
                 JOIN files f ON tp.file_id = f.id
+                LEFT JOIN activity_types at ON tp.activity_category_id = at.id
                 WHERE tp.task_id = ?
             ");
             $stmt->bind_param("i", $task_id);
@@ -88,7 +97,6 @@ try {
             $photos = $result->fetch_all(MYSQLI_ASSOC);
 
             foreach ($photos as &$photo) {
-                // Generate a temporary, pre-signed URL for the thumbnail
                 $cmd = $s3Client->getCommand('GetObject', [
                     'Bucket' => $bucketName,
                     'Key'    => $photo['object_key']
@@ -98,19 +106,6 @@ try {
             }
 
             $response = ['success' => true, 'data' => $photos];
-            break;
-
-        case 'get_task_documents':
-            $task_id = filter_input(INPUT_GET, 'task_id', FILTER_VALIDATE_INT);
-            if (!$task_id) throw new Exception("Invalid Task ID.");
-            
-            // Fetches files that are not images
-            $stmt = $link->prepare("SELECT id, original_filename FROM files WHERE task_id = ? AND upload_type = 'docs'");
-            $stmt->bind_param("i", $task_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $data = $result->fetch_all(MYSQLI_ASSOC);
-            $response = ['success' => true, 'data' => $data];
             break;
 
         default:
